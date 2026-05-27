@@ -48,8 +48,9 @@ Example:
   "raw_payload": {},
   "metadata": {}
 }
+```
 
-Azure Cosmos DB Persistence
+## Azure Cosmos DB Persistence
 
 Normalized events are stored inside Azure Cosmos DB for:
 
