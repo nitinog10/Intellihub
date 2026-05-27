@@ -6,6 +6,8 @@ param keyVaultName string
 param serviceBusNamespaceName string
 param serviceBusQueueName string
 param containerAppsEnvironmentName string
+param azureOpenAIAccountName string = 'closedloop-openai'
+param azureOpenAIDeploymentName string = 'gpt-4o-mini'
 
 resource cosmos 'Microsoft.DocumentDB/databaseAccounts@2024-11-15' = {
   name: cosmosAccountName
@@ -107,9 +109,37 @@ resource rawEventsQueue 'Microsoft.ServiceBus/namespaces/queues@2024-01-01' = {
   properties: {
     lockDuration: 'PT1M'
     maxDeliveryCount: 10
+    deadLetteringOnMessageExpiration: true
     requiresDuplicateDetection: false
     requiresSession: false
     defaultMessageTimeToLive: 'P14D'
+  }
+}
+
+resource azureOpenAI 'Microsoft.CognitiveServices/accounts@2024-10-01' = {
+  name: azureOpenAIAccountName
+  location: location
+  kind: 'OpenAI'
+  sku: {
+    name: 'S0'
+  }
+  properties: {
+    publicNetworkAccess: 'Enabled'
+  }
+}
+
+resource gpt4oMiniDeployment 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = {
+  name: '${azureOpenAI.name}/${azureOpenAIDeploymentName}'
+  sku: {
+    name: 'Standard'
+    capacity: 10
+  }
+  properties: {
+    model: {
+      format: 'OpenAI'
+      name: 'gpt-4o-mini'
+      version: '2024-07-18'
+    }
   }
 }
 
@@ -129,3 +159,4 @@ resource managedEnvironment 'Microsoft.App/managedEnvironments@2024-03-01' = {
 output cosmosEndpoint string = cosmos.properties.documentEndpoint
 output keyVaultUri string = keyVault.properties.vaultUri
 output serviceBusNamespace string = serviceBus.properties.serviceBusEndpoint
+output azureOpenAIEndpoint string = azureOpenAI.properties.endpoint

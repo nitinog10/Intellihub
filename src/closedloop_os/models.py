@@ -27,6 +27,23 @@ class GitHubWebhookEnvelope(BaseModel):
     payload: dict[str, Any]
 
 
+class RawConnectorEvent(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    source_tool: str
+    event_name: str
+    delivery_id: str
+    payload: dict[str, Any]
+    received_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class ClassificationResult(BaseModel):
+    importance_score: float = 0.0
+    has_decision: bool = False
+    decisions: list[str] = Field(default_factory=list)
+    entities: list[str] = Field(default_factory=list)
+    rationale: str = ""
+
+
 class EventQuery(BaseModel):
     project: str | None = None
     actor: str | None = None

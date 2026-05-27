@@ -27,6 +27,12 @@ param serviceBusQueueName string = 'raw-events'
 @description('Container Apps environment name.')
 param containerAppsEnvironmentName string = 'closedloop-env'
 
+@description('Azure OpenAI account name.')
+param azureOpenAIAccountName string = 'closedloop-openai'
+
+@description('Azure OpenAI deployment name for classification.')
+param azureOpenAIDeploymentName string = 'gpt-4o-mini'
+
 resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
   name: resourceGroupName
   location: location
@@ -44,6 +50,8 @@ module closedloop './modules/closedloop-resources.bicep' = {
     serviceBusNamespaceName: serviceBusNamespaceName
     serviceBusQueueName: serviceBusQueueName
     containerAppsEnvironmentName: containerAppsEnvironmentName
+    azureOpenAIAccountName: azureOpenAIAccountName
+    azureOpenAIDeploymentName: azureOpenAIDeploymentName
   }
 }
 
@@ -51,3 +59,4 @@ output resourceGroup string = rg.name
 output cosmosEndpoint string = closedloop.outputs.cosmosEndpoint
 output keyVaultUri string = closedloop.outputs.keyVaultUri
 output serviceBusNamespace string = closedloop.outputs.serviceBusNamespace
+output azureOpenAIEndpoint string = closedloop.outputs.azureOpenAIEndpoint

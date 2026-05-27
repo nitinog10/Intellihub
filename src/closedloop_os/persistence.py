@@ -22,6 +22,29 @@ class EventRepository(ABC):
     def get_event_by_id(self, event_id: str) -> dict[str, Any] | None:
         raise NotImplementedError
 
+    @abstractmethod
+    def search_decisions(self, query_text: str | None = None, limit: int = 25) -> list[dict[str, Any]]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_slack_context(
+        self,
+        channel: str,
+        thread_ts: str | None = None,
+        user: str | None = None,
+        limit: int = 25,
+    ) -> list[dict[str, Any]]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_linear_sprint_status(
+        self,
+        project: str | None = None,
+        cycle: str | None = None,
+        limit: int = 25,
+    ) -> list[dict[str, Any]]:
+        raise NotImplementedError
+
 
 class CosmosEventRepository(EventRepository):
     def __init__(self) -> None:
@@ -67,6 +90,72 @@ class CosmosEventRepository(EventRepository):
         )
         return next(iter(query), None)
 
+    def search_decisions(self, query_text: str | None = None, limit: int = 25) -> list[dict[str, Any]]:
+        sql = [
+            "SELECT TOP @limit * FROM c",
+            "WHERE IS_DEFINED(c.metadata.classification.has_decision)",
+            "AND c.metadata.classification.has_decision = true",
+        ]
+        parameters = [{"name": "@limit", "value": limit}]
+        if query_text:
+            sql.append("AND (CONTAINS(LOWER(c.title), @query_text) OR CONTAINS(LOWER(c.description), @query_text))")
+            parameters.append({"name": "@query_text", "value": query_text.lower()})
+        sql.append("ORDER BY c.timestamp DESC")
+        return list(
+            self.container.query_items(
+                query=" ".join(sql),
+                parameters=parameters,
+                enable_cross_partition_query=True,
+            )
+        )
+
+    def get_slack_context(
+        self,
+        channel: str,
+        thread_ts: str | None = None,
+        user: str | None = None,
+        limit: int = 25,
+    ) -> list[dict[str, Any]]:
+        sql = ["SELECT TOP @limit * FROM c WHERE c.source_tool = 'slack' AND c.metadata.channel = @channel"]
+        parameters = [{"name": "@limit", "value": limit}, {"name": "@channel", "value": channel}]
+        if thread_ts:
+            sql.append("AND c.metadata.thread_ts = @thread_ts")
+            parameters.append({"name": "@thread_ts", "value": thread_ts})
+        if user:
+            sql.append("AND c.metadata.user = @user")
+            parameters.append({"name": "@user", "value": user})
+        sql.append("ORDER BY c.timestamp DESC")
+        return list(
+            self.container.query_items(
+                query=" ".join(sql),
+                parameters=parameters,
+                enable_cross_partition_query=True,
+            )
+        )
+
+    def get_linear_sprint_status(
+        self,
+        project: str | None = None,
+        cycle: str | None = None,
+        limit: int = 25,
+    ) -> list[dict[str, Any]]:
+        sql = ["SELECT TOP @limit * FROM c WHERE c.source_tool = 'linear'"]
+        parameters = [{"name": "@limit", "value": limit}]
+        if project:
+            sql.append("AND c.project = @project")
+            parameters.append({"name": "@project", "value": project})
+        if cycle:
+            sql.append("AND c.metadata.cycle = @cycle")
+            parameters.append({"name": "@cycle", "value": cycle})
+        sql.append("ORDER BY c.timestamp DESC")
+        return list(
+            self.container.query_items(
+                query=" ".join(sql),
+                parameters=parameters,
+                enable_cross_partition_query=True,
+            )
+        )
+
 
 class InMemoryEventRepository(EventRepository):
     def __init__(self) -> None:
@@ -89,6 +178,55 @@ class InMemoryEventRepository(EventRepository):
 
     def get_event_by_id(self, event_id: str) -> dict[str, Any] | None:
         return self._events.get(event_id)
+
+    def search_decisions(self, query_text: str | None = None, limit: int = 25) -> list[dict[str, Any]]:
+        events = [
+            event
+            for event in self._events.values()
+            if event.get("metadata", {}).get("classification", {}).get("has_decision") is True
+        ]
+        if query_text:
+            needle = query_text.lower()
+            events = [
+                event
+                for event in events
+                if needle in event.get("title", "").lower() or needle in event.get("description", "").lower()
+            ]
+        events.sort(key=lambda item: item["timestamp"], reverse=True)
+        return events[:limit]
+
+    def get_slack_context(
+        self,
+        channel: str,
+        thread_ts: str | None = None,
+        user: str | None = None,
+        limit: int = 25,
+    ) -> list[dict[str, Any]]:
+        events = [
+            event
+            for event in self._events.values()
+            if event.get("source_tool") == "slack" and event.get("metadata", {}).get("channel") == channel
+        ]
+        if thread_ts:
+            events = [event for event in events if event.get("metadata", {}).get("thread_ts") == thread_ts]
+        if user:
+            events = [event for event in events if event.get("metadata", {}).get("user") == user]
+        events.sort(key=lambda item: item["timestamp"], reverse=True)
+        return events[:limit]
+
+    def get_linear_sprint_status(
+        self,
+        project: str | None = None,
+        cycle: str | None = None,
+        limit: int = 25,
+    ) -> list[dict[str, Any]]:
+        events = [event for event in self._events.values() if event.get("source_tool") == "linear"]
+        if project:
+            events = [event for event in events if event.get("project") == project]
+        if cycle:
+            events = [event for event in events if event.get("metadata", {}).get("cycle") == cycle]
+        events.sort(key=lambda item: item["timestamp"], reverse=True)
+        return events[:limit]
 
 
 def build_repository() -> EventRepository:
