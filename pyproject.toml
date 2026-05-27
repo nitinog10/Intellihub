@@ -1,0 +1,38 @@
+[project]
+name = "closedloop-os"
+version = "0.1.0"
+description = "ClosedLoop OS Phase 1 - unified knowledge intelligence system on Azure."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "azure-cosmos>=4.9.0",
+    "azure-functions>=1.23.0",
+    "azure-identity>=1.23.0",
+    "azure-keyvault-secrets>=4.10.0",
+    "azure-servicebus>=7.14.2",
+    "fastapi>=0.116.0",
+    "mcp[cli]>=1.27.1",
+    "pydantic>=2.11.0",
+    "python-dotenv>=1.1.0",
+    "uvicorn[standard]>=0.35.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=8.4.0",
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

@@ -1,0 +1,10 @@
+azure-cosmos>=4.9.0
+azure-functions>=1.23.0
+azure-identity>=1.23.0
+azure-keyvault-secrets>=4.10.0
+azure-servicebus>=7.14.2
+fastapi>=0.116.0
+mcp[cli]>=1.27.1
+pydantic>=2.11.0
+python-dotenv>=1.1.0
+uvicorn[standard]>=0.35.0

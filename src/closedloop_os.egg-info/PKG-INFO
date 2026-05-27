@@ -1,0 +1,89 @@
+Metadata-Version: 2.4
+Name: closedloop-os
+Version: 0.1.0
+Summary: ClosedLoop OS Phase 1 - unified knowledge intelligence system on Azure.
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: azure-cosmos>=4.9.0
+Requires-Dist: azure-functions>=1.23.0
+Requires-Dist: azure-identity>=1.23.0
+Requires-Dist: azure-keyvault-secrets>=4.10.0
+Requires-Dist: azure-servicebus>=7.14.2
+Requires-Dist: fastapi>=0.116.0
+Requires-Dist: mcp[cli]>=1.27.1
+Requires-Dist: pydantic>=2.11.0
+Requires-Dist: python-dotenv>=1.1.0
+Requires-Dist: uvicorn[standard]>=0.35.0
+Provides-Extra: dev
+Requires-Dist: httpx>=0.28.1; extra == "dev"
+Requires-Dist: pytest>=8.4.0; extra == "dev"
+
+# ClosedLoop OS - Phase 1
+
+Phase 1 bootstraps ClosedLoop OS as an Azure-backed knowledge intelligence system with:
+
+- Azure Functions + FastAPI webhook intake for GitHub
+- Canonical event normalization and Cosmos DB persistence
+- Optional raw event fan-out to Service Bus
+- An MCP server exposing `query_github_events()` and `get_event_by_id()`
+- Bicep infrastructure and GitHub Actions CI/deploy workflow
+
+## Architecture
+
+- `POST /api/connectors/github`: GitHub webhook ingestion endpoint
+- `GET /healthz`: health probe
+- `/mcp`: MCP streamable HTTP endpoint
+
+## Canonical Event Schema
+
+```json
+{
+  "id": "uuid",
+  "source_tool": "github",
+  "event_type": "github.pull_request.opened",
+  "title": "PR opened: Add webhook flow",
+  "description": "Normalized event description",
+  "actor": "octocat",
+  "project": "org/repo",
+  "importance_score": 0.82,
+  "timestamp": "2026-05-27T12:00:00Z",
+  "raw_payload": {},
+  "metadata": {}
+}
+```
+
+## Local Setup
+
+```bash
+python -m venv .venv
+. .venv/Scripts/activate
+pip install -e ".[dev]"
+copy local.settings.sample.json local.settings.json
+```
+
+Run the ASGI app locally:
+
+```bash
+python main.py
+```
+
+Run tests:
+
+```bash
+pytest
+```
+
+## Azure Deployment
+
+Validate or deploy the Bicep template:
+
+```bash
+az deployment sub validate --location eastus --template-file infra/main.bicep
+az deployment sub create --location eastus --template-file infra/main.bicep
+```
+
+## Assumptions
+
+- The request specified a Cosmos account and container, but not a SQL database name. This implementation uses `closedloop-os`.
+- GitHub webhook secret can come from `GITHUB_WEBHOOK_SECRET` or from Key Vault secret `github-webhook-secret`.
+- Service Bus publishing is enabled only when `SERVICE_BUS_CONNECTION_STRING` is configured.
