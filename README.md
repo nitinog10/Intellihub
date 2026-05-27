@@ -69,6 +69,7 @@ get_event_by_id()
 MCP endpoint:
 
 /mcp
+
 Optional Service Bus Fan-Out
 
 Raw events can optionally be published to Azure Service Bus for:
@@ -126,14 +127,15 @@ Claude / GPT / Cursor
 ├── requirements.txt
 ├── local.settings.sample.json
 └── README.md
+
+
 ⚡ API Endpoints
 GitHub Connector
 POST /api/connectors/github
 
-Receives GitHub webhook payloads.
+
 
 Features:
-
 GitHub signature verification
 Event normalization
 Cosmos DB persistence
@@ -141,17 +143,18 @@ Optional Service Bus publishing
 Health Check
 GET /healthz
 
+
+
 Returns service health status.
-
 Example:
-
 {
   "status": "ok"
 }
+
 MCP Endpoint
 /mcp
-
 Streamable HTTP endpoint exposing MCP tools.
+
 
 🧠 MCP Tools
 query_github_events(days, event_type=None)
@@ -161,33 +164,36 @@ Retrieve recent GitHub events filtered by:
 time window
 event type
 
-Example:
 
+Example:
 query_github_events(days=7)
 get_event_by_id(event_id)
 
-Retrieve a normalized event document by ID.
 
-Example:
 
-get_event_by_id("evt_123")
+
 🛠️ Local Development Setup
+
 1. Create Virtual Environment
 python -m venv .venv
+
 2. Activate Environment
 Windows
 . .venv/Scripts/activate
+
 Linux/macOS
 source .venv/bin/activate
+
 3. Install Dependencies
 pip install -e ".[dev]"
+
 4. Configure Environment
 copy local.settings.sample.json local.settings.json
 
-Add required environment variables.
 
 5. Run Application
 python main.py
+
 6. Run Tests
 pytest
 ☁️ Azure Infrastructure
@@ -202,6 +208,7 @@ Azure Functions
 Azure Key Vault
 Azure Service Bus
 Azure Container Apps
+
 🚀 Azure Deployment
 Validate Infrastructure
 az deployment sub validate \
@@ -211,6 +218,8 @@ Deploy Infrastructure
 az deployment sub create \
   --location eastus \
   --template-file infra/main.bicep
+
+
 🔐 Environment Variables
 Required
 COSMOS_ENDPOINT=
@@ -222,8 +231,8 @@ GITHUB_WEBHOOK_SECRET=
 Optional
 SERVICE_BUS_CONNECTION_STRING=
 KEY_VAULT_URL=
-🔒 Security
 
+🔒 Security
 Implemented:
 
 GitHub webhook signature verification
@@ -232,17 +241,9 @@ Secure environment variable loading
 Async request handling
 📡 GitHub Actions CI/CD
 
-Automated deployment workflow included.
 
-Pipeline handles:
-
-linting
-testing
-Azure deployment
-container publishing
 
 Workflow path:
-
 .github/workflows/deploy.yml
 📌 Assumptions
 Cosmos SQL database name defaults to:
@@ -252,47 +253,3 @@ GITHUB_WEBHOOK_SECRET
 Azure Key Vault secret:
 github-webhook-secret
 
-Service Bus publishing is disabled unless:
-
-SERVICE_BUS_CONNECTION_STRING
-
-is configured.
-
-🧭 Roadmap
-Phase 2
-Slack connector
-Linear connector
-AI classification pipeline
-Azure OpenAI integration
-Phase 3
-Jira + Confluence
-Notion sync
-Semantic vector search
-Phase 4
-Meeting intelligence
-Zendesk integration
-Relationship graph
-Phase 5
-Cross-tool reasoning engine
-Citation verification
-Trust scoring
-Phase 6
-Intelligence Hub UI
-Real-time feeds
-Anomaly detection
-🎯 Vision
-
-IntelliHub aims to become:
-
-“ChatGPT for organizational intelligence.”
-
-A unified intelligence operating system capable of understanding:
-
-engineering workflows
-meetings
-decisions
-support tickets
-organizational memory
-cross-team relationships
-
-through AI-native infrastructure and real-time knowledge ingestion.
