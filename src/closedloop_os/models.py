@@ -21,6 +21,15 @@ class CanonicalEvent(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class GraphRelationship(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    source_event_id: str
+    source_node: str
+    relationship_type: str
+    target_node: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class SearchDocument(BaseModel):
     id: str
     source_tool: str
@@ -55,6 +64,8 @@ class ClassificationResult(BaseModel):
     has_decision: bool = False
     decisions: list[str] = Field(default_factory=list)
     entities: list[str] = Field(default_factory=list)
+    action_items: list[str] = Field(default_factory=list)
+    relationships: list[dict[str, Any]] = Field(default_factory=list)
     rationale: str = ""
 
 

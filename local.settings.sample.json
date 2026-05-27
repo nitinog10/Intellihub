@@ -30,6 +30,8 @@
     "NOTION_ACCESS_TOKEN_NAME": "notion-access-token",
     "NOTION_API_VERSION": "2022-06-28",
     "NOTION_DATABASE_ID": "",
+    "ZENDESK_WEBHOOK_SECRET": "",
+    "ZENDESK_WEBHOOK_SECRET_NAME": "zendesk-webhook-secret",
     "AZURE_SEARCH_ENDPOINT": "",
     "AZURE_SEARCH_API_KEY": "",
     "AZURE_SEARCH_INDEX_NAME": "closedloop-knowledge",

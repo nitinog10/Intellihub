@@ -8,9 +8,11 @@ from closedloop_os.mappers.jira import map_jira_event
 from closedloop_os.mappers.linear import map_linear_event
 from closedloop_os.mappers.notion import map_notion_event
 from closedloop_os.mappers.slack import map_slack_event
+from closedloop_os.mappers.zendesk import map_zendesk_event
 from closedloop_os.models import CanonicalEvent, RawConnectorEvent
 from closedloop_os.persistence import EventRepository, build_repository
 from closedloop_os.search import KnowledgeStore, build_knowledge_store
+from closedloop_os.transcripts import TranscriptChunk, build_meeting_events, extract_relationships
 
 MIN_IMPORTANCE_SCORE = 0.3
 
@@ -27,6 +29,9 @@ class ClassificationPipeline:
         self.knowledge_store = knowledge_store or build_knowledge_store()
 
     def process(self, raw_event: RawConnectorEvent) -> CanonicalEvent | None:
+        if raw_event.source_tool == "meeting":
+            return self._process_meeting(raw_event)
+
         classification = self.classifier.classify(raw_event)
         event = self._map_event(raw_event, classification)
         if event.importance_score <= MIN_IMPORTANCE_SCORE:
@@ -41,8 +46,32 @@ class ClassificationPipeline:
             }
 
         self.repository.upsert_event(event)
+        self.repository.upsert_relationships(extract_relationships(event, classification))
         self.knowledge_store.upsert_event(event)
         return event
+
+    def _process_meeting(self, raw_event: RawConnectorEvent) -> CanonicalEvent | None:
+        grouped_chunks = [
+            chunk if isinstance(chunk, TranscriptChunk) else TranscriptChunk(**chunk)
+            for chunk in raw_event.payload.get("grouped_chunks", [])
+        ]
+        if not grouped_chunks:
+            return None
+        events, relationships = build_meeting_events(
+            raw_event=raw_event,
+            grouped_chunks=grouped_chunks,
+            classification_factory=self.classifier.classify,
+        )
+        stored_events: list[CanonicalEvent] = []
+        for event in events:
+            if event.importance_score <= MIN_IMPORTANCE_SCORE:
+                continue
+            self.repository.upsert_event(event)
+            self.knowledge_store.upsert_event(event)
+            stored_events.append(event)
+        if relationships:
+            self.repository.upsert_relationships(relationships)
+        return stored_events[0] if stored_events else None
 
     def _map_event(self, raw_event: RawConnectorEvent, classification) -> CanonicalEvent:
         if raw_event.source_tool == "slack":
@@ -55,6 +84,8 @@ class ClassificationPipeline:
             return map_confluence_event(raw_event, classification)
         if raw_event.source_tool == "notion":
             return map_notion_event(raw_event, classification)
+        if raw_event.source_tool == "zendesk":
+            return map_zendesk_event(raw_event, classification)
         raise ValueError(f"Unsupported pipeline source: {raw_event.source_tool}")
 
     def _find_duplicate(self, event: CanonicalEvent) -> dict | None:

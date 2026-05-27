@@ -6,7 +6,7 @@ from typing import Any
 from azure.cosmos import CosmosClient
 
 from closedloop_os.config import get_settings
-from closedloop_os.models import CanonicalEvent, EventQuery
+from closedloop_os.models import CanonicalEvent, EventQuery, GraphRelationship
 
 
 class EventRepository(ABC):
@@ -57,6 +57,26 @@ class EventRepository(ABC):
     def get_latest_timestamp(self, source_tool: str, event_prefix: str | None = None) -> str | None:
         raise NotImplementedError
 
+    @abstractmethod
+    def upsert_relationships(self, relationships: list[GraphRelationship]) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_entity_graph(self, entity: str, limit: int = 50) -> list[dict[str, Any]]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_customer_signals(self, limit: int = 25) -> list[dict[str, Any]]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_action_items(self, query_text: str | None = None, limit: int = 25) -> list[dict[str, Any]]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def analyze_meeting(self, meeting_id: str, limit: int = 100) -> list[dict[str, Any]]:
+        raise NotImplementedError
+
 
 class CosmosEventRepository(EventRepository):
     def __init__(self) -> None:
@@ -64,6 +84,7 @@ class CosmosEventRepository(EventRepository):
         client = CosmosClient(url=settings.cosmos_endpoint, credential=settings.cosmos_key)
         database = client.get_database_client(settings.cosmos_database_name)
         self.container = database.get_container_client(settings.cosmos_container_name)
+        self.relationship_container = database.get_container_client("relationships")
 
     def upsert_event(self, event: CanonicalEvent) -> CanonicalEvent:
         self.container.upsert_item(event.model_dump(mode="json"))
@@ -222,10 +243,76 @@ class CosmosEventRepository(EventRepository):
         )
         return items[0]["timestamp"] if items else None
 
+    def upsert_relationships(self, relationships: list[GraphRelationship]) -> None:
+        for relationship in relationships:
+            self.relationship_container.upsert_item(relationship.model_dump(mode="json"))
+
+    def get_entity_graph(self, entity: str, limit: int = 50) -> list[dict[str, Any]]:
+        query = """
+        SELECT TOP @limit * FROM c
+        WHERE c.source_node = @entity OR c.target_node = @entity
+        """
+        return list(
+            self.relationship_container.query_items(
+                query=query,
+                parameters=[{"name": "@entity", "value": entity}, {"name": "@limit", "value": limit}],
+                enable_cross_partition_query=True,
+            )
+        )
+
+    def get_customer_signals(self, limit: int = 25) -> list[dict[str, Any]]:
+        query = """
+        SELECT TOP @limit * FROM c
+        WHERE c.source_tool = 'zendesk'
+        ORDER BY c.importance_score DESC, c.timestamp DESC
+        """
+        return list(
+            self.container.query_items(
+                query=query,
+                parameters=[{"name": "@limit", "value": limit}],
+                enable_cross_partition_query=True,
+            )
+        )
+
+    def get_action_items(self, query_text: str | None = None, limit: int = 25) -> list[dict[str, Any]]:
+        sql = [
+            "SELECT TOP @limit * FROM c",
+            "WHERE IS_DEFINED(c.metadata.classification.action_items)",
+            "AND ARRAY_LENGTH(c.metadata.classification.action_items) > 0",
+        ]
+        parameters = [{"name": "@limit", "value": limit}]
+        if query_text:
+            sql.append("AND (CONTAINS(LOWER(c.title), @query_text) OR CONTAINS(LOWER(c.description), @query_text))")
+            parameters.append({"name": "@query_text", "value": query_text.lower()})
+        sql.append("ORDER BY c.timestamp DESC")
+        return list(
+            self.container.query_items(
+                query=" ".join(sql),
+                parameters=parameters,
+                enable_cross_partition_query=True,
+            )
+        )
+
+    def analyze_meeting(self, meeting_id: str, limit: int = 100) -> list[dict[str, Any]]:
+        query = """
+        SELECT TOP @limit * FROM c
+        WHERE c.source_tool = 'meeting'
+        AND c.metadata.meeting_id = @meeting_id
+        ORDER BY c.timestamp ASC
+        """
+        return list(
+            self.container.query_items(
+                query=query,
+                parameters=[{"name": "@meeting_id", "value": meeting_id}, {"name": "@limit", "value": limit}],
+                enable_cross_partition_query=True,
+            )
+        )
+
 
 class InMemoryEventRepository(EventRepository):
     def __init__(self) -> None:
         self._events: dict[str, dict[str, Any]] = {}
+        self._relationships: dict[str, dict[str, Any]] = {}
 
     def upsert_event(self, event: CanonicalEvent) -> CanonicalEvent:
         self._events[event.id] = event.model_dump(mode="json")
@@ -326,6 +413,48 @@ class InMemoryEventRepository(EventRepository):
             events = [event for event in events if event.get("event_type", "").startswith(event_prefix)]
         events.sort(key=lambda item: item["timestamp"], reverse=True)
         return events[0]["timestamp"] if events else None
+
+    def upsert_relationships(self, relationships: list[GraphRelationship]) -> None:
+        for relationship in relationships:
+            self._relationships[relationship.id] = relationship.model_dump(mode="json")
+
+    def get_entity_graph(self, entity: str, limit: int = 50) -> list[dict[str, Any]]:
+        matches = [
+            relationship
+            for relationship in self._relationships.values()
+            if relationship.get("source_node") == entity or relationship.get("target_node") == entity
+        ]
+        return matches[:limit]
+
+    def get_customer_signals(self, limit: int = 25) -> list[dict[str, Any]]:
+        events = [event for event in self._events.values() if event.get("source_tool") == "zendesk"]
+        events.sort(key=lambda item: (item["importance_score"], item["timestamp"]), reverse=True)
+        return events[:limit]
+
+    def get_action_items(self, query_text: str | None = None, limit: int = 25) -> list[dict[str, Any]]:
+        events = [
+            event
+            for event in self._events.values()
+            if event.get("metadata", {}).get("classification", {}).get("action_items")
+        ]
+        if query_text:
+            needle = query_text.lower()
+            events = [
+                event
+                for event in events
+                if needle in event.get("title", "").lower() or needle in event.get("description", "").lower()
+            ]
+        events.sort(key=lambda item: item["timestamp"], reverse=True)
+        return events[:limit]
+
+    def analyze_meeting(self, meeting_id: str, limit: int = 100) -> list[dict[str, Any]]:
+        events = [
+            event
+            for event in self._events.values()
+            if event.get("source_tool") == "meeting" and event.get("metadata", {}).get("meeting_id") == meeting_id
+        ]
+        events.sort(key=lambda item: item["timestamp"])
+        return events[:limit]
 
 
 def build_repository() -> EventRepository:

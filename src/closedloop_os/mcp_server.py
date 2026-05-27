@@ -78,3 +78,31 @@ def get_notion_decisions(query_text: str | None = None, limit: int = 25) -> list
     """Fetch recent Notion pages classified as decisions."""
     repository = build_repository()
     return repository.get_notion_decisions(query_text=query_text, limit=limit)
+
+
+@mcp.tool()
+def analyze_meeting(meeting_id: str, limit: int = 100) -> list[dict]:
+    """Fetch transcript-derived meeting events for a meeting id."""
+    repository = build_repository()
+    return repository.analyze_meeting(meeting_id=meeting_id, limit=limit)
+
+
+@mcp.tool()
+def get_customer_signals(limit: int = 25) -> list[dict]:
+    """Fetch recent Zendesk-driven customer signals ordered by importance."""
+    repository = build_repository()
+    return repository.get_customer_signals(limit=limit)
+
+
+@mcp.tool()
+def get_entity_graph(entity: str, limit: int = 50) -> list[dict]:
+    """Fetch graph relationships touching a named entity."""
+    repository = build_repository()
+    return repository.get_entity_graph(entity=entity, limit=limit)
+
+
+@mcp.tool()
+def get_action_items(query_text: str | None = None, limit: int = 25) -> list[dict]:
+    """Fetch events that contain extracted action items."""
+    repository = build_repository()
+    return repository.get_action_items(query_text=query_text, limit=limit)

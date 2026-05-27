@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import contextlib
 import json
+from uuid import uuid4
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, Response, UploadFile, status
 
 from closedloop_os.config import get_settings
 from closedloop_os.mcp_server import mcp
@@ -17,6 +18,7 @@ from closedloop_os.security import (
     verify_slack_signature,
 )
 from closedloop_os.services import GitHubIngestService, RawIngestService
+from closedloop_os.transcripts import chunk_transcript, parse_transcript
 
 settings = get_settings()
 
@@ -81,6 +83,12 @@ def resolve_notion_access_token() -> str:
     if settings.notion_access_token:
         return settings.notion_access_token
     return get_secret(settings.notion_access_token_name) or ""
+
+
+def resolve_zendesk_webhook_secret() -> str:
+    if settings.zendesk_webhook_secret:
+        return settings.zendesk_webhook_secret
+    return get_secret(settings.zendesk_webhook_secret_name) or ""
 
 
 @contextlib.asynccontextmanager
@@ -249,3 +257,63 @@ async def confluence_connector(
         delivery_id=delivery_id,
     )
     return {"status": "accepted", "raw_event_id": raw_event.id, "event_type": raw_event.event_name}
+
+
+@app.post("/api/connectors/zendesk", status_code=status.HTTP_202_ACCEPTED)
+async def zendesk_connector(
+    request: Request,
+    x_zendesk_webhook_signature: str | None = Header(default=None, alias="X-Zendesk-Webhook-Signature"),
+    publisher: EventPublisher = Depends(get_publisher),
+) -> dict[str, object]:
+    body = await request.body()
+    secret = resolve_zendesk_webhook_secret()
+    if secret and not verify_sha256_signature(secret, body, x_zendesk_webhook_signature):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Zendesk signature.")
+
+    try:
+        payload = json.loads(body.decode("utf-8"))
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON payload.") from exc
+
+    event_name = (payload.get("type") or payload.get("event_type") or "").lower()
+    supported = {"ticket.created", "ticket.updated", "sla.breached", "satisfaction_rated"}
+    if event_name not in supported:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported Zendesk event '{event_name}'.")
+
+    delivery_id = str(payload.get("id") or payload.get("ticket", {}).get("id") or f"zendesk-{event_name}")
+    raw_event = RawIngestService(publisher=publisher).ingest("zendesk", event_name, payload, delivery_id)
+    return {"status": "accepted", "raw_event_id": raw_event.id, "event_type": event_name}
+
+
+@app.post("/api/connectors/meetings/upload", status_code=status.HTTP_202_ACCEPTED)
+async def upload_meeting_transcript(
+    file: UploadFile = File(...),
+    publisher: EventPublisher = Depends(get_publisher),
+) -> dict[str, object]:
+    supported = {".txt", ".vtt", ".srt", ".json"}
+    filename = file.filename or "meeting.txt"
+    suffix = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if suffix not in supported:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported transcript file '{suffix}'.")
+
+    content = await file.read()
+    parsed_chunks = parse_transcript(filename, content)
+    grouped = chunk_transcript(parsed_chunks)
+    delivery_id = f"meeting-{uuid4()}"
+    meeting_id = f"meeting-{uuid4()}"
+    payload = {
+        "meeting_id": meeting_id,
+        "title": filename,
+        "filename": filename,
+        "grouped_chunks": [
+            {"speaker": chunk.speaker, "timestamp": chunk.timestamp, "text": chunk.text}
+            for chunk in grouped
+        ],
+    }
+    raw_event = RawIngestService(publisher=publisher).ingest("meeting", "transcript_upload", payload, delivery_id)
+    return {
+        "status": "accepted",
+        "raw_event_id": raw_event.id,
+        "meeting_id": meeting_id,
+        "chunk_count": len(grouped),
+    }

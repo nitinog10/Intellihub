@@ -37,6 +37,8 @@ class Settings(BaseModel):
     notion_access_token_name: str = Field(default="notion-access-token")
     notion_api_version: str = Field(default="2022-06-28")
     notion_database_id: str = Field(default="")
+    zendesk_webhook_secret: str = Field(default="")
+    zendesk_webhook_secret_name: str = Field(default="zendesk-webhook-secret")
     azure_search_endpoint: str = Field(default="")
     azure_search_api_key: str = Field(default="")
     azure_search_index_name: str = Field(default="closedloop-knowledge")
@@ -93,6 +95,8 @@ def get_settings() -> Settings:
         notion_access_token_name=os.getenv("NOTION_ACCESS_TOKEN_NAME", "notion-access-token"),
         notion_api_version=os.getenv("NOTION_API_VERSION", "2022-06-28"),
         notion_database_id=os.getenv("NOTION_DATABASE_ID", ""),
+        zendesk_webhook_secret=os.getenv("ZENDESK_WEBHOOK_SECRET", ""),
+        zendesk_webhook_secret_name=os.getenv("ZENDESK_WEBHOOK_SECRET_NAME", "zendesk-webhook-secret"),
         azure_search_endpoint=os.getenv("AZURE_SEARCH_ENDPOINT", ""),
         azure_search_api_key=os.getenv("AZURE_SEARCH_API_KEY", ""),
         azure_search_index_name=os.getenv("AZURE_SEARCH_INDEX_NAME", "closedloop-knowledge"),
