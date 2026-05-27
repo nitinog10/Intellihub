@@ -23,9 +23,28 @@ class Settings(BaseModel):
     slack_bot_token_name: str = Field(default="slack-bot-token")
     linear_webhook_secret: str = Field(default="")
     linear_webhook_secret_name: str = Field(default="linear-webhook-secret")
+    jira_client_id: str = Field(default="")
+    jira_client_secret: str = Field(default="")
+    jira_access_token: str = Field(default="")
+    jira_access_token_name: str = Field(default="jira-access-token")
+    jira_webhook_secret: str = Field(default="")
+    jira_webhook_secret_name: str = Field(default="jira-webhook-secret")
+    confluence_access_token: str = Field(default="")
+    confluence_access_token_name: str = Field(default="confluence-access-token")
+    confluence_webhook_secret: str = Field(default="")
+    confluence_webhook_secret_name: str = Field(default="confluence-webhook-secret")
+    notion_access_token: str = Field(default="")
+    notion_access_token_name: str = Field(default="notion-access-token")
+    notion_api_version: str = Field(default="2022-06-28")
+    notion_database_id: str = Field(default="")
+    azure_search_endpoint: str = Field(default="")
+    azure_search_api_key: str = Field(default="")
+    azure_search_index_name: str = Field(default="closedloop-knowledge")
     azure_openai_endpoint: str = Field(default="")
     azure_openai_api_key: str = Field(default="")
     azure_openai_deployment: str = Field(default="gpt-4o-mini")
+    azure_openai_embedding_deployment: str = Field(default="text-embedding-3-small")
+    azure_openai_embedding_dimensions: int = Field(default=1536)
     azure_openai_api_version: str = Field(default="2024-10-21")
     key_vault_uri: str = Field(default="")
     service_bus_namespace: str = Field(default="")
@@ -39,6 +58,10 @@ class Settings(BaseModel):
     @property
     def has_service_bus(self) -> bool:
         return bool(self.service_bus_connection_string or self.service_bus_namespace)
+
+    @property
+    def has_search(self) -> bool:
+        return bool(self.azure_search_endpoint and self.azure_search_api_key)
 
 
 @lru_cache(maxsize=1)
@@ -56,9 +79,28 @@ def get_settings() -> Settings:
         slack_bot_token_name=os.getenv("SLACK_BOT_TOKEN_NAME", "slack-bot-token"),
         linear_webhook_secret=os.getenv("LINEAR_WEBHOOK_SECRET", ""),
         linear_webhook_secret_name=os.getenv("LINEAR_WEBHOOK_SECRET_NAME", "linear-webhook-secret"),
+        jira_client_id=os.getenv("JIRA_CLIENT_ID", ""),
+        jira_client_secret=os.getenv("JIRA_CLIENT_SECRET", ""),
+        jira_access_token=os.getenv("JIRA_ACCESS_TOKEN", ""),
+        jira_access_token_name=os.getenv("JIRA_ACCESS_TOKEN_NAME", "jira-access-token"),
+        jira_webhook_secret=os.getenv("JIRA_WEBHOOK_SECRET", ""),
+        jira_webhook_secret_name=os.getenv("JIRA_WEBHOOK_SECRET_NAME", "jira-webhook-secret"),
+        confluence_access_token=os.getenv("CONFLUENCE_ACCESS_TOKEN", ""),
+        confluence_access_token_name=os.getenv("CONFLUENCE_ACCESS_TOKEN_NAME", "confluence-access-token"),
+        confluence_webhook_secret=os.getenv("CONFLUENCE_WEBHOOK_SECRET", ""),
+        confluence_webhook_secret_name=os.getenv("CONFLUENCE_WEBHOOK_SECRET_NAME", "confluence-webhook-secret"),
+        notion_access_token=os.getenv("NOTION_ACCESS_TOKEN", ""),
+        notion_access_token_name=os.getenv("NOTION_ACCESS_TOKEN_NAME", "notion-access-token"),
+        notion_api_version=os.getenv("NOTION_API_VERSION", "2022-06-28"),
+        notion_database_id=os.getenv("NOTION_DATABASE_ID", ""),
+        azure_search_endpoint=os.getenv("AZURE_SEARCH_ENDPOINT", ""),
+        azure_search_api_key=os.getenv("AZURE_SEARCH_API_KEY", ""),
+        azure_search_index_name=os.getenv("AZURE_SEARCH_INDEX_NAME", "closedloop-knowledge"),
         azure_openai_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT", ""),
         azure_openai_api_key=os.getenv("AZURE_OPENAI_API_KEY", ""),
         azure_openai_deployment=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
+        azure_openai_embedding_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "text-embedding-3-small"),
+        azure_openai_embedding_dimensions=int(os.getenv("AZURE_OPENAI_EMBEDDING_DIMENSIONS", "1536")),
         azure_openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-10-21"),
         key_vault_uri=os.getenv("KEY_VAULT_URI", ""),
         service_bus_namespace=os.getenv("SERVICE_BUS_NAMESPACE", ""),

@@ -45,6 +45,18 @@ class EventRepository(ABC):
     ) -> list[dict[str, Any]]:
         raise NotImplementedError
 
+    @abstractmethod
+    def get_jira_epic_status(self, epic_key: str | None = None, project: str | None = None, limit: int = 25) -> list[dict[str, Any]]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_notion_decisions(self, query_text: str | None = None, limit: int = 25) -> list[dict[str, Any]]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_latest_timestamp(self, source_tool: str, event_prefix: str | None = None) -> str | None:
+        raise NotImplementedError
+
 
 class CosmosEventRepository(EventRepository):
     def __init__(self) -> None:
@@ -156,6 +168,60 @@ class CosmosEventRepository(EventRepository):
             )
         )
 
+    def get_jira_epic_status(self, epic_key: str | None = None, project: str | None = None, limit: int = 25) -> list[dict[str, Any]]:
+        sql = ["SELECT TOP @limit * FROM c WHERE c.source_tool = 'jira'"]
+        parameters = [{"name": "@limit", "value": limit}]
+        if epic_key:
+            sql.append("AND c.metadata.epic_key = @epic_key")
+            parameters.append({"name": "@epic_key", "value": epic_key})
+        if project:
+            sql.append("AND c.project = @project")
+            parameters.append({"name": "@project", "value": project})
+        sql.append("ORDER BY c.timestamp DESC")
+        return list(
+            self.container.query_items(
+                query=" ".join(sql),
+                parameters=parameters,
+                enable_cross_partition_query=True,
+            )
+        )
+
+    def get_notion_decisions(self, query_text: str | None = None, limit: int = 25) -> list[dict[str, Any]]:
+        sql = [
+            "SELECT TOP @limit * FROM c",
+            "WHERE c.source_tool = 'notion'",
+            "AND IS_DEFINED(c.metadata.classification.has_decision)",
+            "AND c.metadata.classification.has_decision = true",
+        ]
+        parameters = [{"name": "@limit", "value": limit}]
+        if query_text:
+            sql.append("AND (CONTAINS(LOWER(c.title), @query_text) OR CONTAINS(LOWER(c.description), @query_text))")
+            parameters.append({"name": "@query_text", "value": query_text.lower()})
+        sql.append("ORDER BY c.timestamp DESC")
+        return list(
+            self.container.query_items(
+                query=" ".join(sql),
+                parameters=parameters,
+                enable_cross_partition_query=True,
+            )
+        )
+
+    def get_latest_timestamp(self, source_tool: str, event_prefix: str | None = None) -> str | None:
+        sql = ["SELECT TOP 1 c.timestamp FROM c WHERE c.source_tool = @source_tool"]
+        parameters = [{"name": "@source_tool", "value": source_tool}]
+        if event_prefix:
+            sql.append("AND STARTSWITH(c.event_type, @event_prefix)")
+            parameters.append({"name": "@event_prefix", "value": event_prefix})
+        sql.append("ORDER BY c.timestamp DESC")
+        items = list(
+            self.container.query_items(
+                query=" ".join(sql),
+                parameters=parameters,
+                enable_cross_partition_query=True,
+            )
+        )
+        return items[0]["timestamp"] if items else None
+
 
 class InMemoryEventRepository(EventRepository):
     def __init__(self) -> None:
@@ -227,6 +293,39 @@ class InMemoryEventRepository(EventRepository):
             events = [event for event in events if event.get("metadata", {}).get("cycle") == cycle]
         events.sort(key=lambda item: item["timestamp"], reverse=True)
         return events[:limit]
+
+    def get_jira_epic_status(self, epic_key: str | None = None, project: str | None = None, limit: int = 25) -> list[dict[str, Any]]:
+        events = [event for event in self._events.values() if event.get("source_tool") == "jira"]
+        if epic_key:
+            events = [event for event in events if event.get("metadata", {}).get("epic_key") == epic_key]
+        if project:
+            events = [event for event in events if event.get("project") == project]
+        events.sort(key=lambda item: item["timestamp"], reverse=True)
+        return events[:limit]
+
+    def get_notion_decisions(self, query_text: str | None = None, limit: int = 25) -> list[dict[str, Any]]:
+        events = [
+            event
+            for event in self._events.values()
+            if event.get("source_tool") == "notion"
+            and event.get("metadata", {}).get("classification", {}).get("has_decision") is True
+        ]
+        if query_text:
+            needle = query_text.lower()
+            events = [
+                event
+                for event in events
+                if needle in event.get("title", "").lower() or needle in event.get("description", "").lower()
+            ]
+        events.sort(key=lambda item: item["timestamp"], reverse=True)
+        return events[:limit]
+
+    def get_latest_timestamp(self, source_tool: str, event_prefix: str | None = None) -> str | None:
+        events = [event for event in self._events.values() if event.get("source_tool") == source_tool]
+        if event_prefix:
+            events = [event for event in events if event.get("event_type", "").startswith(event_prefix)]
+        events.sort(key=lambda item: item["timestamp"], reverse=True)
+        return events[0]["timestamp"] if events else None
 
 
 def build_repository() -> EventRepository:

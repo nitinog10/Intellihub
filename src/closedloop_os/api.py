@@ -10,7 +10,12 @@ from closedloop_os.mcp_server import mcp
 from closedloop_os.messaging import EventPublisher, build_publisher
 from closedloop_os.persistence import EventRepository, build_repository
 from closedloop_os.secrets import get_secret
-from closedloop_os.security import verify_github_signature, verify_linear_signature, verify_slack_signature
+from closedloop_os.security import (
+    verify_github_signature,
+    verify_linear_signature,
+    verify_sha256_signature,
+    verify_slack_signature,
+)
 from closedloop_os.services import GitHubIngestService, RawIngestService
 
 settings = get_settings()
@@ -46,6 +51,36 @@ def resolve_linear_secret() -> str:
     if settings.linear_webhook_secret:
         return settings.linear_webhook_secret
     return get_secret(settings.linear_webhook_secret_name) or ""
+
+
+def resolve_jira_access_token() -> str:
+    if settings.jira_access_token:
+        return settings.jira_access_token
+    return get_secret(settings.jira_access_token_name) or ""
+
+
+def resolve_jira_webhook_secret() -> str:
+    if settings.jira_webhook_secret:
+        return settings.jira_webhook_secret
+    return get_secret(settings.jira_webhook_secret_name) or ""
+
+
+def resolve_confluence_access_token() -> str:
+    if settings.confluence_access_token:
+        return settings.confluence_access_token
+    return get_secret(settings.confluence_access_token_name) or ""
+
+
+def resolve_confluence_webhook_secret() -> str:
+    if settings.confluence_webhook_secret:
+        return settings.confluence_webhook_secret
+    return get_secret(settings.confluence_webhook_secret_name) or ""
+
+
+def resolve_notion_access_token() -> str:
+    if settings.notion_access_token:
+        return settings.notion_access_token
+    return get_secret(settings.notion_access_token_name) or ""
 
 
 @contextlib.asynccontextmanager
@@ -157,3 +192,60 @@ async def linear_connector(
         delivery_id=delivery_id,
     )
     return {"status": "accepted", "raw_event_id": raw_event.id, "event_type": linear_type}
+
+
+@app.post("/api/connectors/jira", status_code=status.HTTP_202_ACCEPTED)
+async def jira_connector(
+    request: Request,
+    x_atlassian_webhook_identifier: str | None = Header(default=None, alias="X-Atlassian-Webhook-Identifier"),
+    x_atlassian_webhook_event: str | None = Header(default=None, alias="X-Atlassian-Webhook-Event"),
+    x_closedloop_signature: str | None = Header(default=None, alias="X-ClosedLoop-Signature"),
+    publisher: EventPublisher = Depends(get_publisher),
+) -> dict[str, object]:
+    body = await request.body()
+    secret = resolve_jira_webhook_secret()
+    if secret and not verify_sha256_signature(secret, body, x_closedloop_signature):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Jira signature.")
+    resolve_jira_access_token()
+
+    try:
+        payload = json.loads(body.decode("utf-8"))
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON payload.") from exc
+
+    event_name = (x_atlassian_webhook_event or payload.get("webhookEvent") or "").lower().replace("jira:", "").replace("comment_", "comment_")
+    supported = {"issue_created", "issue_updated", "comment_created", "sprint_started", "sprint_closed"}
+    if event_name not in supported:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported Jira event '{event_name}'.")
+
+    delivery_id = str(x_atlassian_webhook_identifier or payload.get("timestamp") or f"jira-{event_name}")
+    raw_event = RawIngestService(publisher=publisher).ingest("jira", event_name, payload, delivery_id)
+    return {"status": "accepted", "raw_event_id": raw_event.id, "event_type": event_name}
+
+
+@app.post("/api/connectors/confluence", status_code=status.HTTP_202_ACCEPTED)
+async def confluence_connector(
+    request: Request,
+    x_atlassian_webhook_identifier: str | None = Header(default=None, alias="X-Atlassian-Webhook-Identifier"),
+    x_closedloop_signature: str | None = Header(default=None, alias="X-ClosedLoop-Signature"),
+    publisher: EventPublisher = Depends(get_publisher),
+) -> dict[str, object]:
+    body = await request.body()
+    secret = resolve_confluence_webhook_secret()
+    if secret and not verify_sha256_signature(secret, body, x_closedloop_signature):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Confluence signature.")
+    resolve_confluence_access_token()
+
+    try:
+        payload = json.loads(body.decode("utf-8"))
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON payload.") from exc
+
+    delivery_id = str(x_atlassian_webhook_identifier or payload.get("timestamp") or "confluence-event")
+    raw_event = RawIngestService(publisher=publisher).ingest(
+        source_tool="confluence",
+        event_name=payload.get("eventType", "page_updated"),
+        payload=payload,
+        delivery_id=delivery_id,
+    )
+    return {"status": "accepted", "raw_event_id": raw_event.id, "event_type": raw_event.event_name}

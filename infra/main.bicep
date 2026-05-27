@@ -33,6 +33,9 @@ param azureOpenAIAccountName string = 'closedloop-openai'
 @description('Azure OpenAI deployment name for classification.')
 param azureOpenAIDeploymentName string = 'gpt-4o-mini'
 
+@description('Azure AI Search service name.')
+param azureSearchServiceName string = 'closedloop-search'
+
 resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
   name: resourceGroupName
   location: location
@@ -52,6 +55,7 @@ module closedloop './modules/closedloop-resources.bicep' = {
     containerAppsEnvironmentName: containerAppsEnvironmentName
     azureOpenAIAccountName: azureOpenAIAccountName
     azureOpenAIDeploymentName: azureOpenAIDeploymentName
+    azureSearchServiceName: azureSearchServiceName
   }
 }
 
@@ -60,3 +64,4 @@ output cosmosEndpoint string = closedloop.outputs.cosmosEndpoint
 output keyVaultUri string = closedloop.outputs.keyVaultUri
 output serviceBusNamespace string = closedloop.outputs.serviceBusNamespace
 output azureOpenAIEndpoint string = closedloop.outputs.azureOpenAIEndpoint
+output azureSearchEndpoint string = closedloop.outputs.azureSearchEndpoint

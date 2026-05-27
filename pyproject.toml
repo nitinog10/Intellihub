@@ -9,8 +9,10 @@ dependencies = [
     "azure-functions>=1.23.0",
     "azure-identity>=1.23.0",
     "azure-keyvault-secrets>=4.10.0",
+    "azure-search-documents>=11.6.0b12",
     "azure-servicebus>=7.14.2",
     "fastapi>=0.116.0",
+    "httpx>=0.28.1",
     "mcp[cli]>=1.27.1",
     "openai>=1.99.0",
     "pydantic>=2.11.0",
@@ -20,7 +22,6 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "httpx>=0.28.1",
     "pytest>=8.4.0",
 ]
 

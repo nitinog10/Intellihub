@@ -4,6 +4,7 @@ from mcp.server.fastmcp import FastMCP
 
 from closedloop_os.models import EventQuery
 from closedloop_os.persistence import build_repository
+from closedloop_os.search import build_knowledge_store
 
 mcp = FastMCP("ClosedLoop OS MCP", stateless_http=True, json_response=True)
 
@@ -56,3 +57,24 @@ def get_linear_sprint_status(
     """Fetch recent Linear issue, comment, cycle, and project events for sprint status."""
     repository = build_repository()
     return repository.get_linear_sprint_status(project=project, cycle=cycle, limit=limit)
+
+
+@mcp.tool()
+def semantic_search(query_text: str, limit: int = 10, source_tool: str | None = None) -> list[dict]:
+    """Run semantic search across indexed ClosedLoop knowledge."""
+    knowledge_store = build_knowledge_store()
+    return knowledge_store.semantic_search(query_text=query_text, limit=limit, source_tool=source_tool)
+
+
+@mcp.tool()
+def get_jira_epic_status(epic_key: str | None = None, project: str | None = None, limit: int = 25) -> list[dict]:
+    """Fetch recent Jira events for an epic or project."""
+    repository = build_repository()
+    return repository.get_jira_epic_status(epic_key=epic_key, project=project, limit=limit)
+
+
+@mcp.tool()
+def get_notion_decisions(query_text: str | None = None, limit: int = 25) -> list[dict]:
+    """Fetch recent Notion pages classified as decisions."""
+    repository = build_repository()
+    return repository.get_notion_decisions(query_text=query_text, limit=limit)

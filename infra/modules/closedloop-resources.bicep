@@ -8,6 +8,7 @@ param serviceBusQueueName string
 param containerAppsEnvironmentName string
 param azureOpenAIAccountName string = 'closedloop-openai'
 param azureOpenAIDeploymentName string = 'gpt-4o-mini'
+param azureSearchServiceName string = 'closedloop-search'
 
 resource cosmos 'Microsoft.DocumentDB/databaseAccounts@2024-11-15' = {
   name: cosmosAccountName
@@ -128,6 +129,20 @@ resource azureOpenAI 'Microsoft.CognitiveServices/accounts@2024-10-01' = {
   }
 }
 
+resource azureSearch 'Microsoft.Search/searchServices@2025-05-01' = {
+  name: azureSearchServiceName
+  location: location
+  sku: {
+    name: 'basic'
+  }
+  properties: {
+    replicaCount: 1
+    partitionCount: 1
+    hostingMode: 'default'
+    publicNetworkAccess: 'enabled'
+  }
+}
+
 resource gpt4oMiniDeployment 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = {
   name: '${azureOpenAI.name}/${azureOpenAIDeploymentName}'
   sku: {
@@ -160,3 +175,4 @@ output cosmosEndpoint string = cosmos.properties.documentEndpoint
 output keyVaultUri string = keyVault.properties.vaultUri
 output serviceBusNamespace string = serviceBus.properties.serviceBusEndpoint
 output azureOpenAIEndpoint string = azureOpenAI.properties.endpoint
+output azureSearchEndpoint string = 'https://${azureSearch.name}.search.windows.net'

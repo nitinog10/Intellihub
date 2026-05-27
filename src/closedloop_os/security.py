@@ -50,3 +50,13 @@ def verify_linear_signature(secret: str, payload: bytes, signature_header: str |
     digest = hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
     expected = f"sha256={digest}"
     return hmac.compare_digest(expected, signature_header) or hmac.compare_digest(digest, signature_header)
+
+
+def verify_sha256_signature(secret: str, payload: bytes, signature_header: str | None) -> bool:
+    if not secret:
+        raise ValueError("Webhook secret is not configured.")
+    if not signature_header:
+        return False
+    digest = hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+    expected = f"sha256={digest}"
+    return hmac.compare_digest(expected, signature_header) or hmac.compare_digest(digest, signature_header)

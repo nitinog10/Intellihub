@@ -21,6 +21,20 @@ class CanonicalEvent(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class SearchDocument(BaseModel):
+    id: str
+    source_tool: str
+    event_type: str
+    title: str
+    description: str
+    actor: str
+    importance_score: float
+    timestamp: str
+    content_vector: list[float]
+    project: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class GitHubWebhookEnvelope(BaseModel):
     event_name: str
     delivery_id: str
