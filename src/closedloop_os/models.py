@@ -74,3 +74,22 @@ class EventQuery(BaseModel):
     actor: str | None = None
     event_type: str | None = None
     limit: int = 25
+
+
+class Citation(BaseModel):
+    id: str
+    source_tool: str
+    event_type: str
+    title: str
+    timestamp: str
+    snippet: str
+
+
+class IntelligenceResponse(BaseModel):
+    answer: str
+    confidence: str
+    trust_score: float
+    citations: list[Citation] = Field(default_factory=list)
+    uncited_claims: list[str] = Field(default_factory=list)
+    suggested_actions: list[str] = Field(default_factory=list)
+    processing_time_ms: int

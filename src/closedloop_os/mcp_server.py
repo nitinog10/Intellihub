@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from mcp.server.fastmcp import FastMCP
 
+from closedloop_os.intelligence import IntelligenceService
 from closedloop_os.models import EventQuery
 from closedloop_os.persistence import build_repository
 from closedloop_os.search import build_knowledge_store
@@ -106,3 +107,17 @@ def get_action_items(query_text: str | None = None, limit: int = 25) -> list[dic
     """Fetch events that contain extracted action items."""
     repository = build_repository()
     return repository.get_action_items(query_text=query_text, limit=limit)
+
+
+@mcp.tool()
+def ask_intelligence(question: str) -> dict:
+    """Answer a question using only retrieved ClosedLoop sources with citations and confidence."""
+    service = IntelligenceService(repository=build_repository(), knowledge_store=build_knowledge_store())
+    return service.ask_intelligence(question).model_dump(mode="json")
+
+
+@mcp.tool()
+def get_timeline(entity: str, limit: int = 50) -> list[dict]:
+    """Fetch a chronological event timeline for an entity."""
+    service = IntelligenceService(repository=build_repository(), knowledge_store=build_knowledge_store())
+    return service.get_timeline(entity=entity, limit=limit)

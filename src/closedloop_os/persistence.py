@@ -77,6 +77,14 @@ class EventRepository(ABC):
     def analyze_meeting(self, meeting_id: str, limit: int = 100) -> list[dict[str, Any]]:
         raise NotImplementedError
 
+    @abstractmethod
+    def search_text(self, query_text: str, limit: int = 25, source_tool: str | None = None) -> list[dict[str, Any]]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_timeline(self, entity: str, limit: int = 50) -> list[dict[str, Any]]:
+        raise NotImplementedError
+
 
 class CosmosEventRepository(EventRepository):
     def __init__(self) -> None:
@@ -308,6 +316,38 @@ class CosmosEventRepository(EventRepository):
             )
         )
 
+    def search_text(self, query_text: str, limit: int = 25, source_tool: str | None = None) -> list[dict[str, Any]]:
+        sql = ["SELECT TOP @limit * FROM c WHERE (CONTAINS(LOWER(c.title), @query_text) OR CONTAINS(LOWER(c.description), @query_text) OR CONTAINS(LOWER(c.actor), @query_text) OR CONTAINS(LOWER(c.project), @query_text))"]
+        parameters = [{"name": "@limit", "value": limit}, {"name": "@query_text", "value": query_text.lower()}]
+        if source_tool:
+            sql.append("AND c.source_tool = @source_tool")
+            parameters.append({"name": "@source_tool", "value": source_tool})
+        sql.append("ORDER BY c.timestamp DESC")
+        return list(
+            self.container.query_items(
+                query=" ".join(sql),
+                parameters=parameters,
+                enable_cross_partition_query=True,
+            )
+        )
+
+    def get_timeline(self, entity: str, limit: int = 50) -> list[dict[str, Any]]:
+        sql = [
+            "SELECT TOP @limit * FROM c",
+            "WHERE CONTAINS(LOWER(c.title), @entity)",
+            "OR CONTAINS(LOWER(c.description), @entity)",
+            "OR CONTAINS(LOWER(c.actor), @entity)",
+            "OR CONTAINS(LOWER(c.project), @entity)",
+            "ORDER BY c.timestamp ASC",
+        ]
+        return list(
+            self.container.query_items(
+                query=" ".join(sql),
+                parameters=[{"name": "@limit", "value": limit}, {"name": "@entity", "value": entity.lower()}],
+                enable_cross_partition_query=True,
+            )
+        )
+
 
 class InMemoryEventRepository(EventRepository):
     def __init__(self) -> None:
@@ -452,6 +492,35 @@ class InMemoryEventRepository(EventRepository):
             event
             for event in self._events.values()
             if event.get("source_tool") == "meeting" and event.get("metadata", {}).get("meeting_id") == meeting_id
+        ]
+        events.sort(key=lambda item: item["timestamp"])
+        return events[:limit]
+
+    def search_text(self, query_text: str, limit: int = 25, source_tool: str | None = None) -> list[dict[str, Any]]:
+        needle = query_text.lower()
+        events = list(self._events.values())
+        if source_tool:
+            events = [event for event in events if event.get("source_tool") == source_tool]
+        events = [
+            event
+            for event in events
+            if needle in event.get("title", "").lower()
+            or needle in event.get("description", "").lower()
+            or needle in event.get("actor", "").lower()
+            or needle in event.get("project", "").lower()
+        ]
+        events.sort(key=lambda item: item["timestamp"], reverse=True)
+        return events[:limit]
+
+    def get_timeline(self, entity: str, limit: int = 50) -> list[dict[str, Any]]:
+        needle = entity.lower()
+        events = [
+            event
+            for event in self._events.values()
+            if needle in event.get("title", "").lower()
+            or needle in event.get("description", "").lower()
+            or needle in event.get("actor", "").lower()
+            or needle in event.get("project", "").lower()
         ]
         events.sort(key=lambda item: item["timestamp"])
         return events[:limit]
