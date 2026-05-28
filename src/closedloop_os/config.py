@@ -72,6 +72,7 @@ class Settings(BaseModel):
     azure_openai_embedding_dimensions: int = Field(default=1536)
     azure_openai_api_version: str = Field(default="2024-10-21")
     key_vault_uri: str = Field(default="")
+    enable_key_vault_lookup: bool = Field(default=False)
     service_bus_namespace: str = Field(default="")
     service_bus_queue_name: str = Field(default="raw-events")
     service_bus_connection_string: str = Field(default="")
@@ -130,6 +131,7 @@ def get_settings() -> Settings:
         azure_openai_embedding_dimensions=int(os.getenv("AZURE_OPENAI_EMBEDDING_DIMENSIONS", "1536")),
         azure_openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-10-21"),
         key_vault_uri=os.getenv("KEY_VAULT_URI", ""),
+        enable_key_vault_lookup=os.getenv("ENABLE_KEY_VAULT_LOOKUP", "").lower() in {"1", "true", "yes"},
         service_bus_namespace=os.getenv("SERVICE_BUS_NAMESPACE", ""),
         service_bus_queue_name=os.getenv("SERVICE_BUS_QUEUE_NAME", "raw-events"),
         service_bus_connection_string=os.getenv("SERVICE_BUS_CONNECTION_STRING", ""),

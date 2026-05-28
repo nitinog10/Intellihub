@@ -8,4 +8,10 @@ if (-not (Test-Path $pythonExe)) {
 }
 
 Set-Location $repoRoot
+Write-Host "Starting ClosedLoop OS locally..." -ForegroundColor Cyan
+Write-Host "  UI:     http://127.0.0.1:8000/" -ForegroundColor Green
+Write-Host "  Docs:   http://127.0.0.1:8000/docs" -ForegroundColor Green
+Write-Host "  Health: http://127.0.0.1:8000/healthz" -ForegroundColor Green
+Write-Host "  MCP:    http://127.0.0.1:8000/mcp" -ForegroundColor Green
+Write-Host ""
 & $pythonExe "main.py"

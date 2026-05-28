@@ -9,6 +9,7 @@
     "COSMOS_CONTAINER_NAME": "events",
     "GITHUB_WEBHOOK_SECRET": "",
     "KEY_VAULT_URI": "https://closedloop-secrets.vault.azure.net/",
+    "ENABLE_KEY_VAULT_LOOKUP": "false",
     "GITHUB_WEBHOOK_SECRET_NAME": "github-webhook-secret",
     "SLACK_SIGNING_SECRET": "",
     "SLACK_SIGNING_SECRET_NAME": "slack-signing-secret",

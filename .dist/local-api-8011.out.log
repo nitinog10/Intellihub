@@ -1,0 +1,4 @@
+INFO:     127.0.0.1:55366 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55366 - "GET /api/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55366 - "GET /healthz HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55366 - "GET /mcp-info HTTP/1.1" 200 OK

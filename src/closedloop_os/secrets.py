@@ -11,7 +11,7 @@ from closedloop_os.config import get_settings
 @lru_cache(maxsize=1)
 def _secret_client() -> SecretClient | None:
     settings = get_settings()
-    if not settings.key_vault_uri:
+    if not settings.key_vault_uri or not settings.enable_key_vault_lookup:
         return None
     return SecretClient(vault_url=settings.key_vault_uri, credential=DefaultAzureCredential())
 
