@@ -77,6 +77,38 @@ resource eventsContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/con
   ]
 }
 
+resource relationshipsContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-11-15' = {
+  name: '${cosmos.name}/${cosmosDatabaseName}/relationships'
+  properties: {
+    resource: {
+      id: 'relationships'
+      partitionKey: {
+        paths: [
+          '/relationship_type'
+        ]
+        kind: 'Hash'
+      }
+      indexingPolicy: {
+        indexingMode: 'consistent'
+        automatic: true
+        includedPaths: [
+          {
+            path: '/*'
+          }
+        ]
+        excludedPaths: [
+          {
+            path: '/"_etag"/?'
+          }
+        ]
+      }
+    }
+  }
+  dependsOn: [
+    sqlDb
+  ]
+}
+
 resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
   name: keyVaultName
   location: location

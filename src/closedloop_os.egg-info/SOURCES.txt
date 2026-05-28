@@ -4,6 +4,7 @@ src/closedloop_os/__init__.py
 src/closedloop_os/api.py
 src/closedloop_os/classification.py
 src/closedloop_os/config.py
+src/closedloop_os/intelligence.py
 src/closedloop_os/mcp_server.py
 src/closedloop_os/messaging.py
 src/closedloop_os/models.py
@@ -12,6 +13,7 @@ src/closedloop_os/pipeline.py
 src/closedloop_os/search.py
 src/closedloop_os/secrets.py
 src/closedloop_os/security.py
+src/closedloop_os/transcripts.py
 src/closedloop_os.egg-info/PKG-INFO
 src/closedloop_os.egg-info/SOURCES.txt
 src/closedloop_os.egg-info/dependency_links.txt
@@ -24,6 +26,7 @@ src/closedloop_os/mappers/jira.py
 src/closedloop_os/mappers/linear.py
 src/closedloop_os/mappers/notion.py
 src/closedloop_os/mappers/slack.py
+src/closedloop_os/mappers/zendesk.py
 src/closedloop_os/services/__init__.py
 src/closedloop_os/services/github_ingest.py
 src/closedloop_os/services/notion_sync.py
@@ -31,7 +34,9 @@ src/closedloop_os/services/raw_ingest.py
 tests/test_classification_pipeline.py
 tests/test_github_mapping.py
 tests/test_github_webhook.py
+tests/test_intelligence.py
 tests/test_jira_confluence_connectors.py
 tests/test_linear_connector.py
 tests/test_semantic_pipeline.py
 tests/test_slack_connector.py
+tests/test_zendesk_and_meetings.py

@@ -2,6 +2,38 @@
 
 This guide explains how to set up the project locally, run the app, exercise every connector, and test the major behavior end to end.
 
+If you are new to this project, start with [LOCAL_QUICKSTART.md](D:/Intellihub/LOCAL_QUICKSTART.md:1). It gives the shortest safe path: setup, test locally, run the API, then move to Azure.
+
+## Local First Rule
+
+Do not create Azure resources until these local checks pass:
+
+```powershell
+cd D:\Intellihub
+.\scripts\setup_local.ps1
+.\scripts\test_all.ps1
+```
+
+Then run the app:
+
+```powershell
+.\scripts\run_local.ps1
+```
+
+In a second PowerShell window:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/healthz
+```
+
+Expected response:
+
+```json
+{"status":"ok"}
+```
+
+After that, continue to [AZURE_SETUP.md](D:/Intellihub/AZURE_SETUP.md:1).
+
 ## What This Guide Covers
 
 - local Python setup
