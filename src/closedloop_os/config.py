@@ -1,13 +1,36 @@
 from __future__ import annotations
 
+import json
 import os
+import sys
 from functools import lru_cache
+from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
 load_dotenv()
+
+
+def load_local_settings() -> None:
+    settings_path = Path("local.settings.json")
+    if not settings_path.exists():
+        return
+
+    try:
+        values = json.loads(settings_path.read_text(encoding="utf-8")).get("Values", {})
+    except (OSError, json.JSONDecodeError):
+        return
+
+    for key, value in values.items():
+        if value is None:
+            continue
+        os.environ.setdefault(key, str(value))
+
+
+if not any("pytest" in arg.lower() for arg in sys.argv):
+    load_local_settings()
 
 
 class Settings(BaseModel):

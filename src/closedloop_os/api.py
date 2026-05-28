@@ -101,6 +101,26 @@ app = FastAPI(title="ClosedLoop OS", version="0.1.0", lifespan=lifespan)
 app.mount("/mcp", mcp.streamable_http_app())
 
 
+@app.get("/")
+async def root() -> dict[str, object]:
+    return {
+        "name": "ClosedLoop OS",
+        "status": "running",
+        "health": "/healthz",
+        "docs": "/docs",
+        "connectors": [
+            "/api/connectors/github",
+            "/api/connectors/slack",
+            "/api/connectors/linear",
+            "/api/connectors/jira",
+            "/api/connectors/confluence",
+            "/api/connectors/zendesk",
+            "/api/connectors/meetings/upload",
+        ],
+        "mcp": "/mcp",
+    }
+
+
 @app.get("/healthz")
 async def healthz() -> dict[str, str]:
     return {"status": "ok"}

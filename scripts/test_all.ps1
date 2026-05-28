@@ -12,8 +12,14 @@ Set-Location $repoRoot
 
 Write-Host "Running pytest..." -ForegroundColor Cyan
 & $pytestExe
+if ($LASTEXITCODE -ne 0) {
+    exit $LASTEXITCODE
+}
 
 Write-Host "Running compile sanity check..." -ForegroundColor Cyan
 & $pythonExe -m compileall src function_app.py main.py
+if ($LASTEXITCODE -ne 0) {
+    exit $LASTEXITCODE
+}
 
 Write-Host "All local checks completed." -ForegroundColor Green
