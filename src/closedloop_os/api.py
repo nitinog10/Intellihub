@@ -25,6 +25,7 @@ from closedloop_os.security import (
 )
 from closedloop_os.services import GitHubIngestService, RawIngestService
 from closedloop_os.transcripts import chunk_transcript, parse_transcript
+from closedloop_os.ui import LOCAL_CONSOLE_HTML
 
 settings = get_settings()
 
@@ -275,6 +276,7 @@ async def api_status() -> dict[str, object]:
 
 @app.get("/ui", response_class=HTMLResponse)
 async def local_ui() -> str:
+    return LOCAL_CONSOLE_HTML
     return """
 <!doctype html>
 <html lang="en">
