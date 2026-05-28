@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import re
 from abc import ABC, abstractmethod
+from functools import lru_cache
 from hashlib import sha256
 from typing import Any
 
@@ -248,13 +249,23 @@ class AzureAISearchKnowledgeStore(KnowledgeStore):
 
 def build_embedding_service() -> EmbeddingService:
     settings = get_settings()
+    if settings.local_runtime_mode:
+        return DeterministicEmbeddingService(settings.azure_openai_embedding_dimensions)
     if settings.azure_openai_endpoint and settings.azure_openai_api_key:
         return AzureOpenAIEmbeddingService()
     return DeterministicEmbeddingService(settings.azure_openai_embedding_dimensions)
 
 
+@lru_cache(maxsize=1)
+def get_local_knowledge_store() -> InMemoryKnowledgeStore:
+    settings = get_settings()
+    return InMemoryKnowledgeStore(DeterministicEmbeddingService(settings.azure_openai_embedding_dimensions))
+
+
 def build_knowledge_store() -> KnowledgeStore:
     settings = get_settings()
+    if settings.local_runtime_mode:
+        return get_local_knowledge_store()
     embedding_service = build_embedding_service()
     if settings.has_search:
         return AzureAISearchKnowledgeStore(embedding_service)

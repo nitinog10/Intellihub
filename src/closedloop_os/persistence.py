@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from functools import lru_cache
 from typing import Any
 
 from azure.cosmos import CosmosClient
@@ -526,8 +527,15 @@ class InMemoryEventRepository(EventRepository):
         return events[:limit]
 
 
+@lru_cache(maxsize=1)
+def get_local_repository() -> InMemoryEventRepository:
+    return InMemoryEventRepository()
+
+
 def build_repository() -> EventRepository:
     settings = get_settings()
+    if settings.local_runtime_mode:
+        return get_local_repository()
     if settings.has_cosmos:
         return CosmosEventRepository()
     return InMemoryEventRepository()

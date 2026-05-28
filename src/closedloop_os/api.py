@@ -257,6 +257,7 @@ async def api_status() -> dict[str, object]:
     return {
         "name": "ClosedLoop OS",
         "status": "running",
+        "runtime_mode": "local" if settings.local_runtime_mode else "configured-services",
         "ui": "/ui",
         "health": "/healthz",
         "docs": "/docs",
@@ -693,6 +694,32 @@ async def save_connector_config(payload: ConnectorSettingsRequest) -> dict[str, 
     return {
         "saved": sorted(cleaned),
         **_connector_status(data["Values"]),
+    }
+
+
+@app.post("/api/demo/zendesk")
+async def demo_zendesk_event(publisher: EventPublisher = Depends(get_publisher)) -> dict[str, object]:
+    payload = {
+        "type": "sla.breached",
+        "id": "local-zendesk-sla",
+        "ticket": {
+            "id": 99,
+            "subject": "Enterprise outage",
+            "description": "SLA is breached for ENG-101 customer impact.",
+            "updated_at": "2026-05-28T16:30:00Z",
+        },
+    }
+    raw_event = RawIngestService(publisher=publisher).ingest(
+        source_tool="zendesk",
+        event_name="sla.breached",
+        payload=payload,
+        delivery_id="local-zendesk-sla",
+    )
+    return {
+        "status": "accepted",
+        "raw_event_id": raw_event.id,
+        "event_type": raw_event.event_name,
+        "note": "In local runtime mode this is processed immediately into the in-memory store.",
     }
 
 

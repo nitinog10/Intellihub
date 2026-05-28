@@ -34,6 +34,7 @@ if not any("pytest" in arg.lower() for arg in sys.argv):
 
 
 class Settings(BaseModel):
+    local_runtime_mode: bool = Field(default=False)
     cosmos_endpoint: str = Field(default="")
     cosmos_key: str = Field(default="")
     cosmos_database_name: str = Field(default="closedloop-os")
@@ -93,6 +94,7 @@ class Settings(BaseModel):
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     return Settings(
+        local_runtime_mode=os.getenv("LOCAL_RUNTIME_MODE", "").lower() in {"1", "true", "yes"},
         cosmos_endpoint=os.getenv("COSMOS_ENDPOINT", ""),
         cosmos_key=os.getenv("COSMOS_KEY", ""),
         cosmos_database_name=os.getenv("COSMOS_DATABASE_NAME", "closedloop-os"),

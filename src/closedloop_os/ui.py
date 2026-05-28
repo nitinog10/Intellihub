@@ -688,20 +688,7 @@ Bob: Action: Ada will follow up with platform.</textarea>
     }
 
     async function sendZendesk() {
-      await run(() => request("/api/connectors/zendesk", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "sla.breached",
-          id: "local-zendesk-sla",
-          ticket: {
-            id: 99,
-            subject: "Enterprise outage",
-            description: "SLA is breached for ENG-101 customer impact.",
-            updated_at: new Date().toISOString()
-          }
-        })
-      }));
+      await run(() => request("/api/demo/zendesk", { method: "POST" }));
     }
 
     checkHealth();

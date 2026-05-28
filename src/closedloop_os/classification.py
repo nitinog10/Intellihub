@@ -76,6 +76,8 @@ class AzureOpenAIEventClassifier(EventClassifier):
 
 def build_classifier() -> EventClassifier:
     settings = get_settings()
+    if settings.local_runtime_mode:
+        return HeuristicEventClassifier()
     if settings.azure_openai_endpoint and settings.azure_openai_api_key:
         return AzureOpenAIEventClassifier()
     return HeuristicEventClassifier()
