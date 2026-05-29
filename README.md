@@ -2,7 +2,7 @@
 
 ClosedLoop OS is a knowledge intelligence backend for product and engineering teams. It connects tools like GitHub, Slack, Linear, Jira, Confluence, Notion, Zendesk, and meeting transcripts, then turns noisy activity into normalized, searchable, cited intelligence.
 
-The project is built as a Python FastAPI and Azure Functions service with optional Azure-backed persistence, queueing, classification, vector search, and secret management.
+The project runs as a standalone **FastAPI + Uvicorn** server with **Azure Cosmos DB** for persistence and **Azure OpenAI** for classification and embeddings. No Azure Functions, Service Bus, AI Search, or Key Vault are needed.
 
 ## The Problem
 
@@ -28,40 +28,35 @@ ClosedLoop OS solves this by creating a unified event intelligence layer across 
 
 ## What We Built
 
-This repository contains the first working version of ClosedLoop OS:
-
 - Webhook ingestion for GitHub, Slack, Linear, Jira, Confluence, and Zendesk.
-- Notion polling support through Azure Functions timer triggers.
+- Notion polling support through APScheduler background jobs.
 - Meeting transcript upload for `.txt`, `.vtt`, `.srt`, and `.json`.
 - Canonical event normalization across all sources.
-- Optional Cosmos DB persistence.
-- Optional Azure Service Bus event queueing.
+- Cosmos DB persistence for events, relationships, and search vectors.
 - Azure OpenAI classification and embedding support.
-- Azure AI Search semantic retrieval.
+- In-memory vector search with Cosmos DB-backed persistence (replaces Azure AI Search).
 - Graph relationship extraction for blockers, decisions, assignments, mentions, causes, resolutions, and meeting discussions.
 - MCP tools for querying events, search, timelines, entity graphs, customer signals, and cited intelligence answers.
-- Local fallback behavior so the app can run and test before Azure is configured.
+- Heuristic fallback behavior so the app can run and test before Azure OpenAI is configured.
 
 ## How It Works
 
 1. A connector receives a webhook, uploaded transcript, or scheduled sync result.
 2. The app converts the raw payload into a normalized canonical event.
-3. If Service Bus is configured, raw events are queued on `raw-events`.
-4. The Azure Functions queue trigger processes raw events.
-5. Azure OpenAI classifies important events and extracts useful metadata.
-6. Events are stored in Cosmos DB, or in memory during local fallback mode.
-7. Searchable content is embedded and indexed into Azure AI Search, or handled by local deterministic embeddings during fallback mode.
-8. Intelligence APIs and MCP tools retrieve evidence, build answers, attach citations, and expose timelines or relationship graphs.
+3. Events are processed immediately by the in-process classification pipeline (no message queue needed).
+4. Azure OpenAI classifies important events and extracts useful metadata (heuristic fallback when not configured).
+5. Events are stored in Cosmos DB, or in memory when Cosmos DB is not configured.
+6. Searchable content is embedded and stored in a Cosmos DB `knowledge` container, with in-memory cosine similarity search.
+7. Intelligence APIs and MCP tools retrieve evidence, build answers, attach citations, and expose timelines or relationship graphs.
 
 ## Architecture
 
 Important entry points:
 
-- [main.py](main.py): local ASGI app runner.
-- [function_app.py](function_app.py): Azure Functions entry point.
-- [src/closedloop_os/api.py](src/closedloop_os/api.py): FastAPI routes.
+- [main.py](main.py): standalone Uvicorn ASGI app runner.
+- [src/closedloop_os/api.py](src/closedloop_os/api.py): FastAPI routes + APScheduler lifespan.
 - [src/closedloop_os/pipeline.py](src/closedloop_os/pipeline.py): classification and processing pipeline.
-- [src/closedloop_os/search.py](src/closedloop_os/search.py): semantic search backends.
+- [src/closedloop_os/search.py](src/closedloop_os/search.py): semantic search backends (CosmosAware + InMemory).
 - [src/closedloop_os/intelligence.py](src/closedloop_os/intelligence.py): cited answer generation.
 - [src/closedloop_os/mcp_server.py](src/closedloop_os/mcp_server.py): MCP tool surface.
 
@@ -99,8 +94,6 @@ All connectors normalize into the same event shape:
 
 ## Local Setup
 
-Use local setup before deploying anything to Azure.
-
 Requirements:
 
 - Python 3.11+
@@ -133,10 +126,11 @@ Local settings live in:
 
 - [local.settings.sample.json](local.settings.sample.json)
 - `local.settings.json`
+- `.env` file (alternative — see [.env.example](.env.example))
 
-Do not commit `local.settings.json`. It may contain real Azure keys and webhook secrets.
+Do not commit `local.settings.json` or `.env`. They may contain real Azure keys and webhook secrets.
 
-The app can run without Azure values by using local fallback behavior. Add Azure values only when you want to test real Cosmos DB, Service Bus, Azure OpenAI, Azure AI Search, or Key Vault integration.
+The app can run without Azure values by using in-memory fallback behavior. Add Azure values only when you want to test real Cosmos DB or Azure OpenAI integration.
 
 ## Run Locally
 
@@ -194,25 +188,19 @@ Current coverage includes:
 
 ## Testing With Azure Values Locally
 
-After you create Azure resources, fill `local.settings.json` with:
+After you create Azure resources, fill `local.settings.json` or `.env` with:
 
 ```text
 COSMOS_ENDPOINT
 COSMOS_KEY
 COSMOS_DATABASE_NAME=closedloop-os
 COSMOS_CONTAINER_NAME=events
-KEY_VAULT_URI
-SERVICE_BUS_CONNECTION_STRING
-SERVICE_BUS_QUEUE_NAME=raw-events
 AZURE_OPENAI_ENDPOINT
 AZURE_OPENAI_API_KEY
 AZURE_OPENAI_DEPLOYMENT=gpt-4o-mini
 AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-3-small
 AZURE_OPENAI_EMBEDDING_DIMENSIONS=1536
 AZURE_OPENAI_API_VERSION=2024-10-21
-AZURE_SEARCH_ENDPOINT
-AZURE_SEARCH_API_KEY
-AZURE_SEARCH_INDEX_NAME=closedloop-knowledge
 ```
 
 Then run:
@@ -224,42 +212,28 @@ Then run:
 
 ## Azure Setup
 
-Azure setup is manual and portal-first. Use:
+The only Azure resources needed are:
 
-- [AZURE_SETUP.md](AZURE_SETUP.md)
-
-The required Azure resources are:
-
-- Resource Group
 - Azure Cosmos DB for NoSQL
-- Cosmos database `closedloop-os`
-- Cosmos containers `events` and `relationships`
-- Azure Key Vault
-- Azure Service Bus namespace and queue `raw-events`
+  - Database: `closedloop-os`
+  - Containers: `events` (partition key: `/source_tool`), `relationships` (partition key: `/relationship_type`), `knowledge` (partition key: `/source_tool`)
 - Azure OpenAI account and model deployments
-- Azure AI Search service
-- Storage Account
-- Azure Function App
+  - Chat model deployment (e.g. `gpt-4o-mini`)
+  - Embedding model deployment (e.g. `text-embedding-3-small`)
 
-You can print a short prep checklist:
-
-```powershell
-.\scripts\azure_prep_checklist.ps1
-```
+No Azure Functions, Service Bus, AI Search, Key Vault, or Storage Account is needed.
 
 ## Deployment
 
-Beginner-friendly deployment path:
+The app is a standard FastAPI service that can be deployed anywhere:
 
-1. Create Azure resources using [AZURE_SETUP.md](AZURE_SETUP.md).
-2. Add Function App environment variables in Azure.
-3. Enable the Function App managed identity.
-4. Grant the identity Key Vault secret access if using Key Vault.
-5. Deploy this folder with the VS Code Azure Functions extension.
-6. Verify:
+1. Create Cosmos DB and Azure OpenAI resources in Azure.
+2. Set environment variables (or `.env`) with the connection details.
+3. Run `python main.py` or deploy to any hosting platform (Docker, VM, App Service, etc.).
+4. Verify:
 
 ```text
-https://<your-function-app>.azurewebsites.net/healthz
+http://your-host:8000/healthz
 ```
 
 Expected response:
@@ -285,7 +259,7 @@ The MCP server exposes:
 - `get_entity_graph(entity, limit=50)`
 - `get_action_items(query_text=None, limit=25)`
 - `ask_intelligence(question)`
-- `get_timeline(entity, limit=50)`
+- `get_timeline(entity, limit=50)
 
 ## Example Questions
 
@@ -315,19 +289,14 @@ The implementation is intentionally conservative: factual claims are built from 
 
 ```text
 .
-|-- function_app.py
 |-- main.py
-|-- host.json
+|-- .env.example
 |-- local.settings.sample.json
 |-- pyproject.toml
-|-- infra/
-|   |-- main.bicep
-|   `-- modules/
 |-- scripts/
 |   |-- setup_local.ps1
 |   |-- run_local.ps1
-|   |-- test_all.ps1
-|   `-- azure_prep_checklist.ps1
+|   `-- test_all.ps1
 |-- src/
 |   `-- closedloop_os/
 `-- tests/
@@ -335,21 +304,19 @@ The implementation is intentionally conservative: factual claims are built from 
 
 ## Security Notes
 
-- Never commit `local.settings.json`.
+- Never commit `local.settings.json` or `.env`.
 - Rotate keys if they are accidentally shared.
-- Prefer Key Vault for connector secrets after first deployment.
-- Use managed identity for Azure-hosted secret access.
-- Use narrower Service Bus policies instead of `RootManageSharedAccessKey` when moving beyond initial setup.
+- All secrets are stored in environment variables or `.env` file — no Key Vault needed.
+- Connector tokens (Slack, Jira, etc.) must be created outside the app and injected through environment variables.
 
 ## Current Limitations
 
 - Connector OAuth consent flows are not implemented in this service yet.
-- Jira, Confluence, Slack, Notion, and Zendesk tokens must be created outside the app and injected through environment variables or Key Vault.
-- Azure deployment is currently manual.
-- Container Apps infrastructure exists as a future option, but the main runtime path is Azure Functions.
+- Jira, Confluence, Slack, Notion, and Zendesk tokens must be created outside the app and injected through environment variables.
+- In-memory vector search works well up to ~100K documents. Beyond that, consider adding a dedicated vector DB like Qdrant or Weaviate.
 
 ## More Guides
 
 - [LOCAL_QUICKSTART.md](LOCAL_QUICKSTART.md): quickest local-first setup path.
 - [SETUP_RUN_AND_TEST.md](SETUP_RUN_AND_TEST.md): detailed local testing guide.
-- [AZURE_SETUP.md](AZURE_SETUP.md): manual Azure Portal setup guide.
+- [plans/migration-plan.md](plans/migration-plan.md): migration plan from the old Azure-heavy architecture.

@@ -534,8 +534,6 @@ def get_local_repository() -> InMemoryEventRepository:
 
 def build_repository() -> EventRepository:
     settings = get_settings()
-    if settings.local_runtime_mode:
-        return get_local_repository()
     if settings.has_cosmos:
         return CosmosEventRepository()
-    return InMemoryEventRepository()
+    return get_local_repository()

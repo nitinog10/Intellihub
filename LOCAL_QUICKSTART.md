@@ -4,8 +4,8 @@ Use this file first. The goal is:
 
 1. prove the app works on your laptop
 2. run the test suite
-3. only then create Azure resources
-4. deploy after Azure settings are ready
+3. only then configure Azure Cosmos DB and Azure OpenAI
+4. deploy after settings are ready
 
 You do not need Azure to finish the local test steps.
 
@@ -26,9 +26,9 @@ Get-ChildItem
 You should see files like:
 
 - `main.py`
-- `function_app.py`
 - `pyproject.toml`
 - `local.settings.sample.json`
+- `.env.example`
 
 ### Step 2: Run the local setup script
 
@@ -114,38 +114,17 @@ These should work before Azure exists:
 These need Azure later:
 
 - persistent Cosmos DB storage
-- Service Bus queue processing
-- Azure OpenAI classification
-- Azure AI Search indexing
-- Key Vault secret lookup
+- Azure OpenAI classification and embeddings
 
 ## Part 3: Azure Setup Order
 
-After local tests pass, use the Azure Portal guide:
-
-- [AZURE_SETUP.md](D:/Intellihub/AZURE_SETUP.md:1)
-
-Create Azure resources in this order:
+After local tests pass, create Azure resources in this order:
 
 1. Resource Group
-2. Cosmos DB account, database, and containers
-3. Key Vault
-4. Service Bus namespace and queue
-5. Azure OpenAI account and deployments
-6. Azure AI Search
-7. Storage Account
-8. Function App
-9. Function App environment variables
-10. Function App managed identity and Key Vault access
-11. Code deployment
-12. Webhook setup
-13. Post-deployment validation
+2. Cosmos DB account, database, and containers (`events`, `relationships`, `knowledge`)
+3. Azure OpenAI account and model deployments
 
-You can print a short checklist with:
-
-```powershell
-.\scripts\azure_prep_checklist.ps1
-```
+That's it — no Service Bus, Key Vault, AI Search, Storage Account, or Function App needed.
 
 ## Part 4: The Values You Must Collect From Azure
 
@@ -154,20 +133,14 @@ Keep these in a temporary note while you create resources:
 ```text
 COSMOS_ENDPOINT=
 COSMOS_KEY=
-KEY_VAULT_URI=
-SERVICE_BUS_CONNECTION_STRING=
 AZURE_OPENAI_ENDPOINT=
 AZURE_OPENAI_API_KEY=
-AZURE_SEARCH_ENDPOINT=
-AZURE_SEARCH_API_KEY=
-FUNCTION_APP_NAME=
-FUNCTION_APP_URL=
 ```
 
-These become Function App settings during deployment.
+These go into `local.settings.json` or `.env` for local testing, and into environment variables for deployment.
 
 ## Part 5: Full Local Testing Guide
 
 For deeper connector and end-to-end testing notes:
 
-- [SETUP_RUN_AND_TEST.md](D:/Intellihub/SETUP_RUN_AND_TEST.md:1)
+- [SETUP_RUN_AND_TEST.md](SETUP_RUN_AND_TEST.md)

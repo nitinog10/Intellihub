@@ -2,7 +2,7 @@
 
 This guide explains how to set up the project locally, run the app, exercise every connector, and test the major behavior end to end.
 
-If you are new to this project, start with [LOCAL_QUICKSTART.md](D:/Intellihub/LOCAL_QUICKSTART.md:1). It gives the shortest safe path: setup, test locally, run the API, then move to Azure.
+If you are new to this project, start with [LOCAL_QUICKSTART.md](LOCAL_QUICKSTART.md). It gives the shortest safe path: setup, test locally, run the API, then configure Azure.
 
 ## Local First Rule
 
@@ -32,8 +32,6 @@ Expected response:
 {"status":"ok"}
 ```
 
-After that, continue to [AZURE_SETUP.md](D:/Intellihub/AZURE_SETUP.md:1).
-
 ## What This Guide Covers
 
 - local Python setup
@@ -41,7 +39,7 @@ After that, continue to [AZURE_SETUP.md](D:/Intellihub/AZURE_SETUP.md:1).
 - running the API
 - running tests
 - testing each connector
-- testing Service Bus driven classification
+- testing classification pipeline
 - testing semantic search
 - testing intelligence queries
 - testing meeting uploads and graph queries
@@ -50,12 +48,11 @@ After that, continue to [AZURE_SETUP.md](D:/Intellihub/AZURE_SETUP.md:1).
 
 Important files:
 
-- [main.py](D:/Intellihub/main.py:1)
-- [function_app.py](D:/Intellihub/function_app.py:1)
-- [api.py](D:/Intellihub/src/closedloop_os/api.py:1)
-- [pipeline.py](D:/Intellihub/src/closedloop_os/pipeline.py:1)
-- [mcp_server.py](D:/Intellihub/src/closedloop_os/mcp_server.py:1)
-- [intelligence.py](D:/Intellihub/src/closedloop_os/intelligence.py:1)
+- [main.py](main.py) — standalone Uvicorn runner
+- [api.py](src/closedloop_os/api.py) — FastAPI routes + APScheduler lifespan
+- [pipeline.py](src/closedloop_os/pipeline.py) — classification and processing pipeline
+- [mcp_server.py](src/closedloop_os/mcp_server.py) — MCP tool surface
+- [intelligence.py](src/closedloop_os/intelligence.py) — cited answer generation
 
 ## Step 1: Create a Virtual Environment
 
@@ -74,6 +71,8 @@ Start from the sample:
 Copy-Item local.settings.sample.json local.settings.json
 ```
 
+Or use a `.env` file (see [.env.example](.env.example) for the template).
+
 For basic local dev without Azure, the app can still run with minimal config because some pieces fall back to in-memory behavior.
 
 ### Minimal local config
@@ -84,18 +83,12 @@ Useful if you only want to run tests and the API:
 {
   "IsEncrypted": false,
   "Values": {
-    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
-    "FUNCTIONS_WORKER_RUNTIME": "python",
     "COSMOS_ENDPOINT": "",
     "COSMOS_KEY": "",
     "COSMOS_DATABASE_NAME": "closedloop-os",
     "COSMOS_CONTAINER_NAME": "events",
-    "SERVICE_BUS_CONNECTION_STRING": "",
-    "SERVICE_BUS_QUEUE_NAME": "raw-events",
     "AZURE_OPENAI_ENDPOINT": "",
-    "AZURE_OPENAI_API_KEY": "",
-    "AZURE_SEARCH_ENDPOINT": "",
-    "AZURE_SEARCH_API_KEY": ""
+    "AZURE_OPENAI_API_KEY": ""
   }
 }
 ```
@@ -111,11 +104,8 @@ Useful if you only want to run tests and the API:
 
 ### What needs real Azure config
 
-- Cosmos persistence
-- Service Bus raw event publishing
-- Azure OpenAI classification
-- Azure AI Search vector index
-- Key Vault secret resolution
+- Cosmos DB persistence
+- Azure OpenAI classification and embeddings
 
 ## Step 3: Run the API Locally
 
@@ -171,7 +161,7 @@ Current test coverage includes:
 Optional sanity check:
 
 ```powershell
-python -m compileall src function_app.py main.py
+python -m compileall src main.py
 ```
 
 ## Step 5: Local Connector Testing
@@ -192,7 +182,7 @@ $body = '{"ref":"refs/heads/main","repository":{"full_name":"org/repo"},"sender"
 
 In practice, the easiest path is the test suite:
 
-- [tests/test_github_webhook.py](D:/Intellihub/tests/test_github_webhook.py:1)
+- [tests/test_github_webhook.py](tests/test_github_webhook.py)
 
 ### Slack
 
@@ -204,7 +194,7 @@ Supported:
 
 Reference tests:
 
-- [tests/test_slack_connector.py](D:/Intellihub/tests/test_slack_connector.py:1)
+- [tests/test_slack_connector.py](tests/test_slack_connector.py)
 
 ### Linear
 
@@ -217,7 +207,7 @@ Supported:
 
 Reference tests:
 
-- [tests/test_linear_connector.py](D:/Intellihub/tests/test_linear_connector.py:1)
+- [tests/test_linear_connector.py](tests/test_linear_connector.py)
 
 ### Jira
 
@@ -231,7 +221,7 @@ Supported:
 
 Reference tests:
 
-- [tests/test_jira_confluence_connectors.py](D:/Intellihub/tests/test_jira_confluence_connectors.py:1)
+- [tests/test_jira_confluence_connectors.py](tests/test_jira_confluence_connectors.py)
 
 ### Confluence
 
@@ -239,7 +229,7 @@ The connector detects ADR/RFC style pages and marks them as decisions.
 
 Reference tests:
 
-- [tests/test_jira_confluence_connectors.py](D:/Intellihub/tests/test_jira_confluence_connectors.py:1)
+- [tests/test_jira_confluence_connectors.py](tests/test_jira_confluence_connectors.py)
 
 ### Zendesk
 
@@ -256,7 +246,7 @@ Special rule:
 
 Reference tests:
 
-- [tests/test_zendesk_and_meetings.py](D:/Intellihub/tests/test_zendesk_and_meetings.py:1)
+- [tests/test_zendesk_and_meetings.py](tests/test_zendesk_and_meetings.py)
 
 ## Step 6: Testing Meeting Transcript Upload
 
@@ -287,8 +277,8 @@ Expected behavior:
 
 Key code:
 
-- [transcripts.py](D:/Intellihub/src/closedloop_os/transcripts.py:1)
-- [pipeline.py](D:/Intellihub/src/closedloop_os/pipeline.py:1)
+- [transcripts.py](src/closedloop_os/transcripts.py)
+- [pipeline.py](src/closedloop_os/pipeline.py)
 
 ## Step 7: Testing the Classification Pipeline
 
@@ -323,12 +313,12 @@ Tool:
 
 Backends:
 
-- Azure AI Search when configured
-- in-memory fallback otherwise
+- CosmosAwareKnowledgeStore when Cosmos DB is configured (vectors stored in `knowledge` container, searched in-memory)
+- InMemoryKnowledgeStore otherwise (deterministic embeddings, in-memory cosine similarity)
 
 Reference semantic tests:
 
-- [tests/test_semantic_pipeline.py](D:/Intellihub/tests/test_semantic_pipeline.py:1)
+- [tests/test_semantic_pipeline.py](tests/test_semantic_pipeline.py)
 
 What to verify:
 
@@ -360,7 +350,7 @@ Where they come from:
 
 Reference test:
 
-- [tests/test_zendesk_and_meetings.py](D:/Intellihub/tests/test_zendesk_and_meetings.py:1)
+- [tests/test_zendesk_and_meetings.py](tests/test_zendesk_and_meetings.py)
 
 ## Step 10: Testing the Intelligence Query Layer
 
@@ -386,7 +376,7 @@ Rules enforced by implementation:
 
 Reference tests:
 
-- [tests/test_intelligence.py](D:/Intellihub/tests/test_intelligence.py:1)
+- [tests/test_intelligence.py](tests/test_intelligence.py)
 
 Useful sample questions:
 
@@ -399,113 +389,48 @@ What is the timeline for ENG-101?
 
 ## Step 11: Testing MCP Tools
 
-Current tool surface includes:
+The MCP server runs at:
 
-- `query_github_events`
-- `get_event_by_id`
-- `search_decisions`
-- `get_slack_context`
-- `get_linear_sprint_status`
-- `semantic_search`
-- `get_jira_epic_status`
-- `get_notion_decisions`
-- `analyze_meeting`
-- `get_customer_signals`
-- `get_entity_graph`
-- `get_action_items`
-- `ask_intelligence`
-- `get_timeline`
+- `http://127.0.0.1:8000/mcp`
 
-Implementation:
+It uses the Streamable HTTP transport.
 
-- [mcp_server.py](D:/Intellihub/src/closedloop_os/mcp_server.py:1)
+You can test with any MCP client, or check the info endpoint:
 
-To test the MCP endpoint in an integrated environment:
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/mcp-info
+```
 
-1. run the app
-2. point your MCP client at `/mcp`
-3. call the tools listed above
+## Step 12: Testing Notion Sync
 
-## Step 12: End-to-End Local Validation Checklist
+Notion sync runs as a background APScheduler job.
 
-Use this sequence when you want to validate the whole stack locally:
+Configuration:
 
-1. `pip install -e ".[dev]"`
-2. `python main.py`
-3. verify `GET /healthz`
-4. run `pytest`
-5. upload a meeting transcript
-6. trigger at least one webhook style connector
-7. call semantic search
-8. call `get_entity_graph`
-9. call `ask_intelligence`
-10. call `get_timeline`
+- `NOTION_ACCESS_TOKEN` — required for sync to run
+- `NOTION_DATABASE_ID` — the Notion database to sync
+- `NOTION_API_VERSION` — default `2022-06-28`
+- `NOTION_SYNC_INTERVAL_MINUTES` — default `5`
+
+When `NOTION_ACCESS_TOKEN` is set, the scheduler automatically polls Notion for updated pages every interval.
 
 ## Troubleshooting
 
-### API starts but no events persist
+### Cosmos DB connection fails
 
-Likely causes:
+Check:
 
-- no Cosmos settings
-- intentional fallback to in-memory repository
-- the process restarted and in-memory state was lost
+- `COSMOS_ENDPOINT` and `COSMOS_KEY` are set correctly
+- the Cosmos DB account exists and is accessible
+- the database and containers (`events`, `relationships`, `knowledge`) exist
 
-### Semantic search returns weak results
+### Azure OpenAI classification returns errors
 
-Likely causes:
+Check:
 
-- Azure AI Search is not configured
-- the app is using deterministic local embeddings
-- no events were indexed yet
+- `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_API_KEY` are set
+- the model deployments exist with the names configured in `AZURE_OPENAI_DEPLOYMENT` and `AZURE_OPENAI_EMBEDDING_DEPLOYMENT`
 
-### `ask_intelligence()` gives a thin answer
+### Semantic search returns no results
 
-Likely causes:
-
-- not enough source events available
-- the question does not match stored event text well
-- retrieval is evidence-first and intentionally conservative
-
-### Key Vault secrets do not resolve
-
-Likely causes:
-
-- `KEY_VAULT_URI` missing
-- wrong secret names
-- no Azure identity for the runtime
-
-### Service Bus trigger does not fire locally
-
-Likely causes:
-
-- no Service Bus connection string
-- the raw event was never published
-- local function host is not being used for queue-trigger execution
-
-## Recommended Daily Commands
-
-Setup:
-
-```powershell
-.venv\Scripts\activate
-pip install -e ".[dev]"
-```
-
-Run app:
-
-```powershell
-python main.py
-```
-
-Run tests:
-
-```powershell
-pytest
-```
-
-Run compile sanity check:
-
-```powershell
-python -m compileall src function_app.py main.py
-```
+If Azure OpenAI is not configured, the app uses deterministic embeddings which are less accurate but still functional. Check that events have been ingested before searching.

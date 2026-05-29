@@ -1,16 +1,12 @@
 [project]
 name = "closedloop-os"
-version = "0.1.0"
-description = "ClosedLoop OS Phase 1 - unified knowledge intelligence system on Azure."
+version = "0.2.0"
+description = "ClosedLoop OS - unified knowledge intelligence system. Standalone FastAPI + Cosmos DB + Azure OpenAI."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "azure-cosmos>=4.9.0",
-    "azure-functions>=1.23.0",
-    "azure-identity>=1.23.0",
-    "azure-keyvault-secrets>=4.10.0",
-    "azure-search-documents>=11.6.0b12",
-    "azure-servicebus>=7.14.2",
+    "apscheduler>=3.11.0",
     "fastapi>=0.116.0",
     "httpx>=0.28.1",
     "mcp[cli]>=1.27.1",

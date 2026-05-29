@@ -3,3 +3,12 @@ INFO:     127.0.0.1:50727 - "GET /api/status HTTP/1.1" 200 OK
 INFO:     127.0.0.1:50727 - "GET /healthz HTTP/1.1" 200 OK
 INFO:     127.0.0.1:50732 - "GET / HTTP/1.1" 200 OK
 INFO:     127.0.0.1:50733 - "GET /api/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60683 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60683 - "GET /healthz HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58114 - "GET /api/connectors/config HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58114 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52209 - "POST /api/connectors/zendesk HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:52209 - "POST /api/connectors/meetings/upload HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:52209 - "POST /api/tools/ask-intelligence HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52209 - "POST /api/tools/semantic-search HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59051 - "GET /healthz HTTP/1.1" 200 OK

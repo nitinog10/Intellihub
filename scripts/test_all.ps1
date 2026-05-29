@@ -17,7 +17,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "Running compile sanity check..." -ForegroundColor Cyan
-& $pythonExe -m compileall src function_app.py main.py
+& $pythonExe -m compileall src main.py
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }

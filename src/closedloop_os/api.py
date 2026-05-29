@@ -16,7 +16,6 @@ from closedloop_os.mcp_server import mcp
 from closedloop_os.messaging import EventPublisher, build_publisher
 from closedloop_os.persistence import EventRepository, build_repository
 from closedloop_os.search import build_knowledge_store
-from closedloop_os.secrets import get_secret
 from closedloop_os.security import (
     verify_github_signature,
     verify_linear_signature,
@@ -64,7 +63,7 @@ CONNECTOR_CONFIG: dict[str, dict[str, object]] = {
         "label": "Notion",
         "keys": ["NOTION_ACCESS_TOKEN", "NOTION_DATABASE_ID", "NOTION_API_VERSION"],
         "endpoint": "timer sync",
-        "note": "Notion is synced by the timer trigger, not a public webhook endpoint.",
+        "note": "Notion is synced by the background scheduler, not a public webhook endpoint.",
     },
     "zendesk": {
         "label": "Zendesk",
@@ -79,7 +78,6 @@ ALLOWED_CONNECTOR_KEYS = {
     for connector in CONNECTOR_CONFIG.values()
     for key in connector["keys"]
 }
-ALLOWED_CONNECTOR_KEYS.add("ENABLE_KEY_VAULT_LOOKUP")
 
 
 class AskIntelligenceRequest(BaseModel):
@@ -165,7 +163,6 @@ def _connector_status(values: dict[str, str]) -> dict[str, object]:
     return {
         "connectors": connectors,
         "local_settings": str(_local_settings_path()),
-        "key_vault_lookup": values.get("ENABLE_KEY_VAULT_LOOKUP", "false"),
     }
 
 
@@ -178,69 +175,75 @@ def get_publisher() -> EventPublisher:
 
 
 def resolve_github_secret() -> str:
-    if settings.github_webhook_secret:
-        return settings.github_webhook_secret
-    return get_secret(settings.github_webhook_secret_name) or ""
+    return settings.github_webhook_secret
 
 
 def resolve_slack_signing_secret() -> str:
-    if settings.slack_signing_secret:
-        return settings.slack_signing_secret
-    return get_secret(settings.slack_signing_secret_name) or ""
+    return settings.slack_signing_secret
 
 
 def resolve_slack_bot_token() -> str:
-    if settings.slack_bot_token:
-        return settings.slack_bot_token
-    return get_secret(settings.slack_bot_token_name) or ""
+    return settings.slack_bot_token
 
 
 def resolve_linear_secret() -> str:
-    if settings.linear_webhook_secret:
-        return settings.linear_webhook_secret
-    return get_secret(settings.linear_webhook_secret_name) or ""
+    return settings.linear_webhook_secret
 
 
 def resolve_jira_access_token() -> str:
-    if settings.jira_access_token:
-        return settings.jira_access_token
-    return get_secret(settings.jira_access_token_name) or ""
+    return settings.jira_access_token
 
 
 def resolve_jira_webhook_secret() -> str:
-    if settings.jira_webhook_secret:
-        return settings.jira_webhook_secret
-    return get_secret(settings.jira_webhook_secret_name) or ""
+    return settings.jira_webhook_secret
 
 
 def resolve_confluence_access_token() -> str:
-    if settings.confluence_access_token:
-        return settings.confluence_access_token
-    return get_secret(settings.confluence_access_token_name) or ""
+    return settings.confluence_access_token
 
 
 def resolve_confluence_webhook_secret() -> str:
-    if settings.confluence_webhook_secret:
-        return settings.confluence_webhook_secret
-    return get_secret(settings.confluence_webhook_secret_name) or ""
+    return settings.confluence_webhook_secret
 
 
 def resolve_notion_access_token() -> str:
-    if settings.notion_access_token:
-        return settings.notion_access_token
-    return get_secret(settings.notion_access_token_name) or ""
+    return settings.notion_access_token
 
 
 def resolve_zendesk_webhook_secret() -> str:
-    if settings.zendesk_webhook_secret:
-        return settings.zendesk_webhook_secret
-    return get_secret(settings.zendesk_webhook_secret_name) or ""
+    return settings.zendesk_webhook_secret
 
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Start APScheduler for Notion sync background job
+    from apscheduler.schedulers.background import BackgroundScheduler
+    from closedloop_os.services import NotionSyncService
+
+    scheduler = BackgroundScheduler()
+
+    def _sync_notion_pages() -> None:
+        try:
+            service = NotionSyncService(repository=build_repository(), publisher=build_publisher())
+            service.sync_updated_pages()
+        except Exception:
+            pass  # non-critical background job; log if needed
+
+    interval_minutes = settings.notion_sync_interval_minutes
+    if settings.notion_access_token:
+        scheduler.add_job(
+            _sync_notion_pages,
+            "interval",
+            minutes=interval_minutes,
+            id="notion-sync",
+            replace_existing=True,
+        )
+    scheduler.start()
+
     async with mcp.session_manager.run():
         yield
+
+    scheduler.shutdown(wait=False)
 
 
 app = FastAPI(title="ClosedLoop OS", version="0.1.0", lifespan=lifespan)
@@ -257,7 +260,8 @@ async def api_status() -> dict[str, object]:
     return {
         "name": "ClosedLoop OS",
         "status": "running",
-        "runtime_mode": "local" if settings.local_runtime_mode else "configured-services",
+        "cosmos_db": "connected" if settings.has_cosmos else "not configured",
+        "openai": "connected" if settings.has_openai else "not configured (heuristic fallback)",
         "ui": "/ui",
         "health": "/healthz",
         "docs": "/docs",
@@ -278,366 +282,6 @@ async def api_status() -> dict[str, object]:
 @app.get("/ui", response_class=HTMLResponse)
 async def local_ui() -> str:
     return LOCAL_CONSOLE_HTML
-    return """
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ClosedLoop OS Local Console</title>
-  <style>
-    :root {
-      color-scheme: dark;
-      --bg: #0f1720;
-      --panel: #151f2b;
-      --panel-2: #101821;
-      --text: #edf4ff;
-      --muted: #9fb0c5;
-      --line: #27364a;
-      --accent: #4fb3ff;
-      --ok: #37d399;
-      --warn: #ffce5c;
-      --bad: #ff6b7a;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      background: var(--bg);
-      color: var(--text);
-      font: 14px/1.5 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }
-    header {
-      padding: 24px 28px 18px;
-      border-bottom: 1px solid var(--line);
-      background: #111b26;
-    }
-    h1 { margin: 0 0 6px; font-size: 24px; letter-spacing: 0; }
-    p { margin: 0; color: var(--muted); }
-    main {
-      display: grid;
-      grid-template-columns: minmax(280px, 380px) 1fr;
-      gap: 18px;
-      padding: 18px;
-    }
-    section {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 16px;
-    }
-    h2 { margin: 0 0 12px; font-size: 16px; }
-    label { display: block; margin: 12px 0 6px; color: var(--muted); font-size: 13px; }
-    input, textarea, select {
-      width: 100%;
-      background: var(--panel-2);
-      color: var(--text);
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      padding: 10px;
-      font: inherit;
-    }
-    textarea { min-height: 112px; resize: vertical; }
-    button, a.button {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 36px;
-      margin: 8px 8px 0 0;
-      padding: 8px 12px;
-      color: #071018;
-      background: var(--accent);
-      border: 0;
-      border-radius: 6px;
-      font: inherit;
-      font-weight: 650;
-      text-decoration: none;
-      cursor: pointer;
-    }
-    button.secondary, a.secondary {
-      color: var(--text);
-      background: #233247;
-      border: 1px solid var(--line);
-    }
-    .grid { display: grid; gap: 14px; }
-    .status { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
-    .pill {
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      padding: 4px 9px;
-      color: var(--muted);
-      background: var(--panel-2);
-      font-size: 12px;
-    }
-    .pill.ok { color: var(--ok); }
-    .pill.warn { color: var(--warn); }
-    pre {
-      min-height: 260px;
-      margin: 0;
-      padding: 14px;
-      overflow: auto;
-      background: #08111a;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      color: #d9e8ff;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-    .hint { margin-top: 8px; font-size: 13px; color: var(--muted); }
-    @media (max-width: 900px) {
-      main { grid-template-columns: 1fr; }
-    }
-  </style>
-</head>
-<body>
-  <header>
-    <h1>ClosedLoop OS Local Console</h1>
-    <p>Use this screen to test health, connector ingestion, transcript upload, search, intelligence, and MCP status.</p>
-    <div class="status">
-      <span class="pill" id="health-pill">health: checking</span>
-      <span class="pill">API: http://127.0.0.1:8000</span>
-      <span class="pill warn">MCP is for MCP clients, not browser GET</span>
-    </div>
-  </header>
-  <main>
-    <div class="grid">
-      <section>
-        <h2>Quick Links</h2>
-        <a class="button" href="/docs" target="_blank">Open API Docs</a>
-        <a class="button secondary" href="/mcp-info" target="_blank">MCP Info</a>
-        <button class="secondary" onclick="checkHealth()">Check Health</button>
-      </section>
-
-      <section>
-        <h2>Connect Tools</h2>
-        <p class="hint">Paste a tool token or webhook secret, then save. Values go into local.settings.json and are used immediately by this local server.</p>
-        <label for="connector">Tool</label>
-        <select id="connector" onchange="renderConnectorForm()"></select>
-        <div id="connector-status" class="hint"></div>
-        <div id="connector-fields"></div>
-        <button onclick="saveConnector()">Save Connection</button>
-        <button class="secondary" onclick="loadConnectors()">Refresh Status</button>
-      </section>
-
-      <section>
-        <h2>Ask Intelligence</h2>
-        <label for="question">Question</label>
-        <textarea id="question">What customer signals mention ENG-101?</textarea>
-        <button onclick="askIntelligence()">Ask</button>
-      </section>
-
-      <section>
-        <h2>Semantic Search</h2>
-        <label for="query">Query</label>
-        <input id="query" value="Azure AI Search decision" />
-        <label for="source">Source filter</label>
-        <select id="source">
-          <option value="">All sources</option>
-          <option value="github">GitHub</option>
-          <option value="slack">Slack</option>
-          <option value="linear">Linear</option>
-          <option value="jira">Jira</option>
-          <option value="confluence">Confluence</option>
-          <option value="zendesk">Zendesk</option>
-          <option value="meeting">Meeting</option>
-        </select>
-        <button onclick="semanticSearch()">Search</button>
-      </section>
-
-      <section>
-        <h2>Entity Graph</h2>
-        <label for="entity">Entity</label>
-        <input id="entity" value="ENG-101" />
-        <button onclick="entityGraph()">Get Graph</button>
-        <button class="secondary" onclick="timeline()">Timeline</button>
-      </section>
-
-      <section>
-        <h2>Meeting Upload</h2>
-        <label for="meeting">Transcript text</label>
-        <textarea id="meeting">Ada: We decided ENG-101 is blocked by API-2.
-Bob: Action: Ada will follow up with platform.</textarea>
-        <button onclick="uploadMeeting()">Upload Transcript</button>
-      </section>
-
-      <section>
-        <h2>Sample Zendesk Event</h2>
-        <p class="hint">This posts a local sample to the Zendesk connector. It may enqueue to Service Bus if your connection string is configured.</p>
-        <button onclick="sendZendesk()">Send SLA Breach</button>
-      </section>
-    </div>
-
-    <section>
-      <h2>Output</h2>
-      <pre id="output">Ready. Try Check Health, Upload Transcript, or Open API Docs.</pre>
-    </section>
-  </main>
-
-  <script>
-    const output = document.getElementById("output");
-    const healthPill = document.getElementById("health-pill");
-    const connectorSelect = document.getElementById("connector");
-    const connectorFields = document.getElementById("connector-fields");
-    const connectorStatus = document.getElementById("connector-status");
-    let connectorConfig = {};
-
-    function show(data) {
-      output.textContent = typeof data === "string" ? data : JSON.stringify(data, null, 2);
-    }
-
-    async function request(path, options = {}) {
-      const response = await fetch(path, options);
-      const text = await response.text();
-      let body;
-      try { body = text ? JSON.parse(text) : null; } catch { body = text; }
-      if (!response.ok) {
-        throw { status: response.status, body };
-      }
-      return body;
-    }
-
-    async function run(action) {
-      try {
-        show(await action());
-      } catch (error) {
-        show({ error: true, status: error.status || "client", detail: error.body || String(error) });
-      }
-    }
-
-    async function checkHealth() {
-      await run(async () => {
-        const result = await request("/healthz");
-        healthPill.textContent = "health: " + result.status;
-        healthPill.className = "pill ok";
-        return result;
-      });
-    }
-
-    async function loadConnectors() {
-      await run(async () => {
-        const result = await request("/api/connectors/config");
-        connectorConfig = result.connectors || {};
-        connectorSelect.innerHTML = "";
-        Object.entries(connectorConfig).forEach(([id, config]) => {
-          const option = document.createElement("option");
-          option.value = id;
-          option.textContent = `${config.connected ? "Connected" : "Not connected"} - ${config.label}`;
-          connectorSelect.appendChild(option);
-        });
-        renderConnectorForm();
-        return result;
-      });
-    }
-
-    function renderConnectorForm() {
-      const id = connectorSelect.value;
-      const config = connectorConfig[id];
-      if (!config) {
-        connectorFields.innerHTML = "";
-        connectorStatus.textContent = "";
-        return;
-      }
-      connectorStatus.textContent = `${config.connected ? "Connected" : "Not connected"} | Endpoint: ${config.endpoint} | ${config.note}`;
-      connectorFields.innerHTML = "";
-      Object.entries(config.keys).forEach(([key, state]) => {
-        const label = document.createElement("label");
-        label.htmlFor = `cfg-${key}`;
-        label.textContent = `${key}${state.configured ? ` (${state.preview})` : ""}`;
-        const input = document.createElement("input");
-        input.id = `cfg-${key}`;
-        input.dataset.key = key;
-        input.type = key.includes("SECRET") || key.includes("TOKEN") ? "password" : "text";
-        input.placeholder = state.configured ? "Already saved. Paste a new value to replace." : "Paste value";
-        connectorFields.appendChild(label);
-        connectorFields.appendChild(input);
-      });
-    }
-
-    async function saveConnector() {
-      const values = {};
-      connectorFields.querySelectorAll("input[data-key]").forEach((input) => {
-        if (input.value.trim()) {
-          values[input.dataset.key] = input.value.trim();
-        }
-      });
-      if (!Object.keys(values).length) {
-        show({ saved: false, message: "Paste at least one value before saving." });
-        return;
-      }
-      await run(async () => {
-        const result = await request("/api/connectors/config", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ values })
-        });
-        connectorConfig = result.connectors || {};
-        renderConnectorForm();
-        return result;
-      });
-    }
-
-    async function askIntelligence() {
-      await run(() => request("/api/tools/ask-intelligence", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: document.getElementById("question").value })
-      }));
-    }
-
-    async function semanticSearch() {
-      const source = document.getElementById("source").value || null;
-      await run(() => request("/api/tools/semantic-search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query_text: document.getElementById("query").value, source_tool: source, limit: 10 })
-      }));
-    }
-
-    async function entityGraph() {
-      await run(() => request("/api/tools/entity-graph", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ entity: document.getElementById("entity").value, limit: 25 })
-      }));
-    }
-
-    async function timeline() {
-      await run(() => request("/api/tools/timeline", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ entity: document.getElementById("entity").value, limit: 25 })
-      }));
-    }
-
-    async function uploadMeeting() {
-      const blob = new Blob([document.getElementById("meeting").value], { type: "text/plain" });
-      const form = new FormData();
-      form.append("file", blob, "local-meeting.txt");
-      await run(() => request("/api/connectors/meetings/upload", { method: "POST", body: form }));
-    }
-
-    async function sendZendesk() {
-      await run(() => request("/api/connectors/zendesk", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "sla.breached",
-          id: "local-zendesk-sla",
-          ticket: {
-            id: 99,
-            subject: "Enterprise outage",
-            description: "SLA is breached for ENG-101 customer impact.",
-            updated_at: new Date().toISOString()
-          }
-        })
-      }));
-    }
-
-    checkHealth();
-    loadConnectors();
-  </script>
-</body>
-</html>
-"""
 
 
 @app.get("/mcp-info")
@@ -719,7 +363,7 @@ async def demo_zendesk_event(publisher: EventPublisher = Depends(get_publisher))
         "status": "accepted",
         "raw_event_id": raw_event.id,
         "event_type": raw_event.event_name,
-        "note": "In local runtime mode this is processed immediately into the in-memory store.",
+        "note": "Event is processed immediately by the in-process pipeline.",
     }
 
 

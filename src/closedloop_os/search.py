@@ -7,20 +7,7 @@ from functools import lru_cache
 from hashlib import sha256
 from typing import Any
 
-from azure.core.credentials import AzureKeyCredential
-from azure.search.documents import SearchClient
-from azure.search.documents.indexes import SearchIndexClient
-from azure.search.documents.indexes.models import (
-    HnswAlgorithmConfiguration,
-    SearchField,
-    SearchFieldDataType,
-    SearchIndex,
-    SearchableField,
-    SimpleField,
-    VectorSearch,
-    VectorSearchProfile,
-)
-from azure.search.documents.models import VectorizedQuery
+from azure.cosmos import CosmosClient
 from openai import AzureOpenAI
 
 from closedloop_os.config import get_settings
@@ -157,43 +144,45 @@ class InMemoryKnowledgeStore(KnowledgeStore):
         return result
 
 
-class AzureAISearchKnowledgeStore(KnowledgeStore):
+class CosmosAwareKnowledgeStore(KnowledgeStore):
+    """Stores search documents (including vectors) in Cosmos DB and loads them
+    into memory for fast cosine-similarity search.
+
+    This replaces Azure AI Search with a simpler approach:
+    - Vectors are persisted in a Cosmos DB ``knowledge`` container
+    - On ``ensure_index()`` all existing documents are loaded into memory
+    - Search is performed in-memory (no network latency)
+    """
+
     def __init__(self, embedding_service: EmbeddingService) -> None:
         settings = get_settings()
-        credential = AzureKeyCredential(settings.azure_search_api_key)
-        self.index_name = settings.azure_search_index_name
         self.embedding_service = embedding_service
-        self.index_client = SearchIndexClient(endpoint=settings.azure_search_endpoint, credential=credential)
-        self.search_client = SearchClient(endpoint=settings.azure_search_endpoint, index_name=self.index_name, credential=credential)
-        self.dimensions = settings.azure_openai_embedding_dimensions
+        client = CosmosClient(url=settings.cosmos_endpoint, credential=settings.cosmos_key)
+        database = client.get_database_client(settings.cosmos_database_name)
+        self._container = database.get_container_client("knowledge")
+        self._documents: dict[str, SearchDocument] = {}
+        self._loaded = False
 
     def ensure_index(self) -> None:
-        fields = [
-            SimpleField(name="id", type=SearchFieldDataType.String, key=True),
-            SimpleField(name="source_tool", type=SearchFieldDataType.String, filterable=True),
-            SimpleField(name="event_type", type=SearchFieldDataType.String, filterable=True),
-            SearchableField(name="title", type=SearchFieldDataType.String),
-            SearchableField(name="description", type=SearchFieldDataType.String),
-            SearchableField(name="actor", type=SearchFieldDataType.String, filterable=True),
-            SimpleField(name="importance_score", type=SearchFieldDataType.Double, filterable=True, sortable=True),
-            SimpleField(name="timestamp", type=SearchFieldDataType.DateTimeOffset, filterable=True, sortable=True),
-            SearchField(
-                name="content_vector",
-                type=SearchFieldDataType.Collection(SearchFieldDataType.Single),
-                searchable=True,
-                vector_search_dimensions=self.dimensions,
-                vector_search_profile_name="closedloop-vector-profile",
-            ),
-        ]
-        index = SearchIndex(
-            name=self.index_name,
-            fields=fields,
-            vector_search=VectorSearch(
-                algorithms=[HnswAlgorithmConfiguration(name="closedloop-hnsw")],
-                profiles=[VectorSearchProfile(name="closedloop-vector-profile", algorithm_configuration_name="closedloop-hnsw")],
-            ),
+        if self._loaded:
+            return
+        self._load_from_cosmos()
+        self._loaded = True
+
+    def _load_from_cosmos(self) -> None:
+        """Load all existing knowledge documents from Cosmos DB into memory."""
+        items = list(
+            self._container.query_items(
+                query="SELECT * FROM c",
+                enable_cross_partition_query=True,
+            )
         )
-        self.index_client.create_or_update_index(index)
+        for item in items:
+            try:
+                doc = SearchDocument(**item)
+                self._documents[doc.id] = doc
+            except Exception:
+                continue
 
     def _build_document(self, event: CanonicalEvent) -> SearchDocument:
         return SearchDocument(
@@ -212,46 +201,47 @@ class AzureAISearchKnowledgeStore(KnowledgeStore):
 
     def upsert_event(self, event: CanonicalEvent) -> None:
         self.ensure_index()
-        self.search_client.merge_or_upload_documents([self._build_document(event).model_dump(mode="json")])
+        doc = self._build_document(event)
+        self._documents[event.id] = doc
+        self._container.upsert_item(doc.model_dump(mode="json"))
 
     def semantic_search(self, query_text: str, limit: int = 10, source_tool: str | None = None) -> list[dict[str, Any]]:
         self.ensure_index()
-        vector = self.embedding_service.embed(query_text)
-        filter_text = f"source_tool eq '{source_tool}'" if source_tool else None
-        results = self.search_client.search(
-            search_text=query_text,
-            vector_queries=[VectorizedQuery(vector=vector, k_nearest_neighbors=limit, fields="content_vector")],
-            top=limit,
-            filter=filter_text,
+        query_vector = self.embedding_service.embed(query_text)
+        docs = list(self._documents.values())
+        if source_tool:
+            docs = [doc for doc in docs if doc.source_tool == source_tool]
+        ranked = sorted(
+            docs,
+            key=lambda doc: _cosine_similarity(query_vector, doc.content_vector),
+            reverse=True,
         )
-        return [dict(item) for item in results]
+        return [doc.model_dump(mode="json") for doc in ranked[:limit]]
 
     def find_overlap(self, event: CanonicalEvent, compare_source: str, threshold: float = 0.92) -> dict[str, Any] | None:
         self.ensure_index()
-        vector = self.embedding_service.embed(_event_text(event))
-        results = list(
-            self.search_client.search(
-                search_text=event.title,
-                vector_queries=[VectorizedQuery(vector=vector, k_nearest_neighbors=1, fields="content_vector")],
-                top=1,
-                filter=f"source_tool eq '{compare_source}'",
-            )
-        )
-        if not results:
+        if not self._documents:
             return None
-        result = dict(results[0])
-        score = float(result.get("@search.score", 0.0))
+        probe = self._build_document(event)
+        candidates = [doc for doc in self._documents.values() if doc.source_tool == compare_source]
+        ranked = sorted(
+            candidates,
+            key=lambda doc: _cosine_similarity(probe.content_vector, doc.content_vector),
+            reverse=True,
+        )
+        if not ranked:
+            return None
+        score = _cosine_similarity(probe.content_vector, ranked[0].content_vector)
         if score < threshold:
             return None
+        result = ranked[0].model_dump(mode="json")
         result["similarity_score"] = score
         return result
 
 
 def build_embedding_service() -> EmbeddingService:
     settings = get_settings()
-    if settings.local_runtime_mode:
-        return DeterministicEmbeddingService(settings.azure_openai_embedding_dimensions)
-    if settings.azure_openai_endpoint and settings.azure_openai_api_key:
+    if settings.has_openai:
         return AzureOpenAIEmbeddingService()
     return DeterministicEmbeddingService(settings.azure_openai_embedding_dimensions)
 
@@ -264,9 +254,7 @@ def get_local_knowledge_store() -> InMemoryKnowledgeStore:
 
 def build_knowledge_store() -> KnowledgeStore:
     settings = get_settings()
-    if settings.local_runtime_mode:
-        return get_local_knowledge_store()
     embedding_service = build_embedding_service()
-    if settings.has_search:
-        return AzureAISearchKnowledgeStore(embedding_service)
+    if settings.has_cosmos:
+        return CosmosAwareKnowledgeStore(embedding_service)
     return InMemoryKnowledgeStore(embedding_service)

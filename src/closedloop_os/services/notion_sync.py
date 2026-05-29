@@ -7,7 +7,6 @@ import httpx
 from closedloop_os.config import get_settings
 from closedloop_os.messaging import EventPublisher
 from closedloop_os.persistence import EventRepository
-from closedloop_os.secrets import get_secret
 from closedloop_os.services.raw_ingest import RawIngestService
 
 
@@ -18,7 +17,7 @@ class NotionSyncService:
         self.settings = get_settings()
 
     def sync_updated_pages(self) -> list[str]:
-        token = self.settings.notion_access_token or get_secret(self.settings.notion_access_token_name)
+        token = self.settings.notion_access_token
         if not token:
             return []
 

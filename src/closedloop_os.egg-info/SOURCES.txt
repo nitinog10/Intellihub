@@ -14,6 +14,7 @@ src/closedloop_os/search.py
 src/closedloop_os/secrets.py
 src/closedloop_os/security.py
 src/closedloop_os/transcripts.py
+src/closedloop_os/ui.py
 src/closedloop_os.egg-info/PKG-INFO
 src/closedloop_os.egg-info/SOURCES.txt
 src/closedloop_os.egg-info/dependency_links.txt
